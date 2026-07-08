@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super KPI Card</title>
+<style>
+  :root {
+    --pos-color: #5FA84E;
+    --neg-color: #E05A4E;
+    --bg-color: #FFFFFF;
+    --text-color: #1A1A1A;
+    --label-color: #6B7280;
+    --neutral-color: #9CA3AF;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  /* -------- Card view -------- */
+  #card {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-color);
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #status-bar {
+    height: 7px;
+    width: 100%;
+    background: var(--neutral-color);
+    flex: 0 0 auto;
+  }
+
+  #card-body {
+    flex: 1 1 auto;
+    padding: 16px 18px 14px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+    text-align: left;
+  }
+
+  #label-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  #label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--label-color);
+  }
+
+  #caption {
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--label-color);
+  }
+
+  #value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-color);
+    line-height: 1.2;
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #subtext {
+    font-size: 13px;
+    color: var(--label-color);
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #subtext .triangle {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  #gear {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--label-color);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #card:hover #gear {
+    opacity: 0.7;
+  }
+
+  #gear:hover {
+    opacity: 1 !important;
+  }
+
+  #empty-state {
+    font-size: 13px;
+    color: var(--label-color);
+  }
+
+  #error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #E05A4E;
+    color: white;
+    font-size: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    z-index: 9999;
+    display: none;
+  }
+
+  /* -------- Dialog view -------- */
+  #dialog {
+    display: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 16px 20px;
+    overflow-y: auto;
+    background: #FFFFFF;
+    color: #1A1A1A;
+  }
+
+  #dialog h2 {
+    font-size: 15px;
+    margin: 0 0 12px 0;
+  }
+
+  #dialog .field {
+    margin-bottom: 12px;
+  }
+
+  #dialog label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+
+  #dialog input[type="text"],
+  #dialog input[type="number"],
+  #dialog select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog input[type="checkbox"] {
+    margin-right: 6px;
+  }
+
+  #dialog .row {
+    display: flex;
+    gap: 10px;
+  }
+
+  #dialog .row > .field {
+    flex: 1;
+  }
+
+  #dialog fieldset {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    margin: 0 0 14px 0;
+    padding: 10px 12px 12px 12px;
+  }
+
+  #dialog legend {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+    padding: 0 4px;
+  }
+
+  #dialog input[type="color"] {
+    width: 44px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog .color-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #dialog-buttons {
+    position: sticky;
+    bottom: 0;
+    background: #FFFFFF;
+    padding-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #E5E7EB;
+    margin-top: 6px;
+  }
+
+  #dialog button {
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    cursor: pointer;
+  }
+
+  #dialog button.primary {
+    background: #1A1A1A;
+    color: #FFFFFF;
+    border-color: #1A1A1A;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+
+<div id="error-banner"></div>
+
+<!-- Card view -->
+<div id="card">
+  <div id="status-bar"></div>
+  <div id="card-body">
+    <div id="empty-state" class="hidden">Add a measure to this card.</div>
+    <div id="content-wrap" class="hidden">
+      <div id="label-row">
+        <span id="label"></span>
+        <span id="caption"></span>
+      </div>
+      <div id="value"></div>
+      <div id="subtext"></div>
+    </div>
+  </div>
+  <button id="gear" title="Configure">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+      <path d="M19.14 12.94a7.14 7.14 0 0 0 .06-.94 7.14 7.14 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.24.1.48-.02.6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 15.6 12 3.6 3.6 0 0 1 12 15.6Z"/>
+    </svg>
+  </button>
+</div>
+
+<!-- Dialog / configuration view -->
+<div id="dialog">
+  <h2>Super KPI Card Settings</h2>
+
+  <fieldset>
+    <legend>Value</legend>
+    <div class="field">
+      <label for="f-aggregation">Aggregation</label>
+      <select id="f-aggregation">
+        <option value="sum">Sum</option>
+        <option value="avg">Average</option>
+        <option value="min">Min</option>
+        <option value="max">Max</option>
+        <option value="count">Count</option>
+        <option value="latest">Latest</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-prefix">Prefix</label>
+        <input type="text" id="f-prefix" placeholder="$">
+      </div>
+      <div class="field">
+        <label for="f-suffix">Suffix</label>
+        <input type="text" id="f-suffix" placeholder="%">
+      </div>
+      <div class="field">
+        <label for="f-decimals">Decimals</label>
+        <select id="f-decimals">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="f-abbreviate"> Abbreviate (K / M)</label>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-title">Title override</label>
+        <input type="text" id="f-title" placeholder="Leave blank to use field name">
+      </div>
+      <div class="field">
+        <label for="f-date-prefix">Date caption prefix</label>
+        <input type="text" id="f-date-prefix" placeholder="through">
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Comparison</legend>
+    <div class="field">
+      <label for="f-comparison-source">Comparison source</label>
+      <select id="f-comparison-source">
+        <option value="measure">Use Comparison measure</option>
+        <option value="fixed">Fixed target number</option>
+      </select>
+    </div>
+    <div class="field" id="f-fixed-target-wrap">
+      <label for="f-fixed-target">Fixed target value</label>
+      <input type="number" id="f-fixed-target" step="any">
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="f-higher-better"> Higher is better</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Subtext</legend>
+    <div class="field">
+      <label for="f-subtext-mode">Subtext mode</label>
+      <select id="f-subtext-mode">
+        <option value="vsBudget">vs budget</option>
+        <option value="vsTarget">vs target</option>
+        <option value="vsPrior">vs prior period</option>
+        <option value="context">context count</option>
+        <option value="custom">custom</option>
+        <option value="none">none</option>
+      </select>
+    </div>
+
+    <div class="field subtext-opt" data-mode="vsPrior">
+      <label><input type="checkbox" id="f-prior-relative"> Show as relative % instead of raw change</label>
+    </div>
+
+    <div class="field subtext-opt" data-mode="context">
+      <label for="f-context-noun">Context noun</label>
+      <input type="text" id="f-context-noun" placeholder="compliant patients">
+    </div>
+
+    <div class="row subtext-opt" data-mode="custom">
+      <div class="field">
+        <label for="f-custom-number">Custom number</label>
+        <input type="number" id="f-custom-number" step="any">
+      </div>
+      <div class="field">
+        <label for="f-custom-decimals">Decimals</label>
+        <select id="f-custom-decimals">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-custom-symbol">Symbol</label>
+        <input type="text" id="f-custom-symbol" placeholder="%">
+      </div>
+    </div>
+    <div class="field subtext-opt" data-mode="custom">
+      <label for="f-custom-text">Custom suffix text</label>
+      <input type="text" id="f-custom-text" placeholder="vs target">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Colors</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-color-pos">Positive</label>
+        <div class="color-field"><input type="color" id="f-color-pos"></div>
+      </div>
+      <div class="field">
+        <label for="f-color-neg">Negative</label>
+        <div class="color-field"><input type="color" id="f-color-neg"></div>
+      </div>
+      <div class="field">
+        <label for="f-color-bg">Background</label>
+        <div class="color-field"><input type="color" id="f-color-bg"></div>
+      </div>
+      <div class="field">
+        <label for="f-color-text">Text</label>
+        <div class="color-field"><input type="color" id="f-color-text"></div>
+      </div>
+    </div>
+  </fieldset>
+
+  <div id="dialog-buttons">
+    <button id="btn-cancel">Cancel</button>
+    <button id="btn-save" class="primary">Save</button>
+  </div>
+</div>
+
+<script src="./tableau.extensions.1.latest.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var ENC = { VALUE: 'value', COMPARISON: 'comparison', CONTEXT: 'context', DATE: 'date' };
+
+  var DEFAULTS = {
+    aggregation: 'sum',
+    comparisonSource: 'measure',
+    fixedTarget: '0',
+    higherIsBetter: 'true',
+    subtextMode: 'vsBudget',
+    priorRelative: 'false',
+    contextNoun: 'compliant patients',
+    customNumber: '0',
+    customDecimals: '1',
+    customSymbol: '%',
+    customText: 'vs target',
+    valuePrefix: '',
+    valueSuffix: '',
+    valueDecimals: '0',
+    valueAbbreviate: 'false',
+    titleOverride: '',
+    datePrefix: 'through',
+    colorPositive: '#5FA84E',
+    colorNegative: '#E05A4E',
+    colorBackground: '#FFFFFF',
+    colorText: '#1A1A1A'
+  };
+
+  function showFatalError(msg) {
+    var banner = document.getElementById('error-banner');
+    if (!banner) { return; }
+    banner.textContent = msg;
+    banner.style.display = 'block';
+  }
+
+  if (typeof tableau === 'undefined') {
+    showFatalError('Failed to load the Tableau Extensions API library (tableau.extensions.1.latest.min.js). ' +
+      'Make sure the file is deployed alongside index.html.');
+    // Nothing else can run without the API.
+    return;
+  }
+
+  var isDialog = window.location.search.indexOf('dialog=1') !== -1;
+
+  function getSetting(settings, key) {
+    var v = settings[key];
+    return (v === undefined || v === null || v === '') ? DEFAULTS[key] : v;
+  }
+
+  function boolOf(v) {
+    return v === true || v === 'true';
+  }
+
+  // =========================================================================
+  // Number formatting
+  // =========================================================================
+  function formatValue(num, opts) {
+    opts = opts || {};
+    var prefix = opts.prefix || '';
+    var suffix = opts.suffix || '';
+    var decimals = opts.decimals != null ? opts.decimals : 0;
+    var abbreviate = !!opts.abbreviate;
+    var forceSign = !!opts.forceSign;
+
+    if (num === null || num === undefined || isNaN(num)) { return '--'; }
+
+    var sign = '';
+    var abs = Math.abs(num);
+    if (forceSign) {
+      sign = num < 0 ? '-' : '+';
+    } else if (num < 0) {
+      sign = '-';
+    }
+
+    var scaled = abs;
+    var scaleLetter = '';
+    if (abbreviate) {
+      if (abs >= 1e9) { scaled = abs / 1e9; scaleLetter = 'B'; }
+      else if (abs >= 1e6) { scaled = abs / 1e6; scaleLetter = 'M'; }
+      else if (abs >= 1e3) { scaled = abs / 1e3; scaleLetter = 'K'; }
+    }
+
+    var numStr;
+    if (abbreviate && scaleLetter) {
+      numStr = scaled.toFixed(decimals);
+    } else {
+      numStr = scaled.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    }
+
+    return sign + prefix + numStr + scaleLetter + suffix;
+  }
+
+  function formatInt(num) {
+    if (num === null || num === undefined || isNaN(num)) { return '--'; }
+    return Math.round(num).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  function formatPct1(num) {
+    if (num === null || num === undefined || isNaN(num)) { return '--'; }
+    return Math.abs(num).toFixed(1);
+  }
+
+  // =========================================================================
+  // Card rendering logic
+  // =========================================================================
+  function CardApp() {
+    this.worksheet = null;
+    this.settings = {};
+  }
+
+  CardApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeAsync().then(function () {
+      self.worksheet = tableau.extensions.worksheetContent.worksheet;
+      self.settings = tableau.extensions.settings.getAll();
+
+      document.getElementById('gear').addEventListener('click', function () {
+        self.openConfigDialog();
+      });
+
+      self.worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () {
+        self.updateAndRender();
+      });
+
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, function (evt) {
+        self.settings = evt.newSettings;
+        self.updateAndRender();
+      });
+
+      return self.updateAndRender();
+    }, function (err) {
+      showFatalError('Failed to initialize extension: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  CardApp.prototype.openConfigDialog = function () {
+    var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
+    tableau.extensions.ui.displayDialogAsync(popupUrl, '', { height: 720, width: 480 })
+      .then(function () {
+        // Settings are applied via the SettingsChanged listener.
+      })
+      .catch(function (error) {
+        if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) {
+          return;
+        }
+        console.error(error);
+      });
+  };
+
+  // Build a map of encodingId -> [field, ...] from the current visual specification.
+  CardApp.prototype.getEncodingMap = function () {
+    return this.worksheet.getVisualSpecificationAsync().then(function (visualSpec) {
+      var map = {};
+      if (visualSpec.activeMarksSpecificationIndex < 0) { return map; }
+      var marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+      marksCard.encodings.forEach(function (encoding) {
+        if (!map[encoding.id]) { map[encoding.id] = []; }
+        map[encoding.id].push(encoding.field);
+      });
+      return map;
+    });
+  };
+
+  // Read all rows of summary data, returned as objects keyed by field name -> DataValue.
+  CardApp.prototype.getSummaryRows = function () {
+    var rows = [];
+    return this.worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true }).then(function (reader) {
+      var pageCount = reader.pageCount;
+      var chain = Promise.resolve();
+      var pages = [];
+      for (var i = 0; i < pageCount; i++) {
+        (function (pageIndex) {
+          chain = chain.then(function () {
+            return reader.getPageAsync(pageIndex).then(function (page) { pages.push(page); });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        return reader.releaseAsync().then(function () { return pages; });
+      });
+    }).then(function (pages) {
+      pages.forEach(function (page) {
+        var columns = page.columns;
+        for (var i = 0; i < page.data.length; i++) {
+          var row = {};
+          for (var j = 0; j < columns.length; j++) {
+            row[columns[j].fieldName] = page.data[i][columns[j].index];
+          }
+          rows.push(row);
+        }
+      });
+      return rows;
+    });
+  };
+
+  function nativeNumber(dataValue) {
+    if (!dataValue) { return NaN; }
+    var v = dataValue.value;
+    return typeof v === 'number' ? v : parseFloat(v);
+  }
+
+  // Aggregate a numeric field across all summary rows for a given encoding.
+  function aggregateField(rows, encodingMap, encodingId, aggregation, dateEncodingId) {
+    var fields = encodingMap[encodingId];
+    if (!fields || fields.length === 0) { return null; }
+    var fieldName = fields[0].name;
+
+    var values = [];
+    rows.forEach(function (row) {
+      var n = nativeNumber(row[fieldName]);
+      if (!isNaN(n)) { values.push(n); }
+    });
+
+    if (values.length === 0) { return null; }
+
+    switch (aggregation) {
+      case 'avg':
+        return values.reduce(function (a, b) { return a + b; }, 0) / values.length;
+      case 'min':
+        return Math.min.apply(null, values);
+      case 'max':
+        return Math.max.apply(null, values);
+      case 'count':
+        return values.length;
+      case 'latest': {
+        var dateFields = dateEncodingId ? encodingMap[dateEncodingId] : null;
+        if (dateFields && dateFields.length > 0) {
+          var dateFieldName = dateFields[0].name;
+          var latestRow = null;
+          var latestTime = -Infinity;
+          rows.forEach(function (row) {
+            var dv = row[dateFieldName];
+            var t = dv ? Date.parse(dv.value) : NaN;
+            var fv = nativeNumber(row[fieldName]);
+            if (!isNaN(t) && !isNaN(fv) && t >= latestTime) {
+              latestTime = t;
+              latestRow = fv;
+            }
+          });
+          return latestRow !== null ? latestRow : values[values.length - 1];
+        }
+        return values[values.length - 1];
+      }
+      case 'sum':
+      default:
+        return values.reduce(function (a, b) { return a + b; }, 0);
+    }
+  }
+
+  function latestFormattedDate(rows, encodingMap) {
+    var dateFields = encodingMap[ENC.DATE];
+    if (!dateFields || dateFields.length === 0) { return null; }
+    var dateFieldName = dateFields[0].name;
+
+    var latest = null;
+    var latestTime = -Infinity;
+    rows.forEach(function (row) {
+      var dv = row[dateFieldName];
+      if (!dv) { return; }
+      var t = Date.parse(dv.value);
+      if (!isNaN(t) && t >= latestTime) {
+        latestTime = t;
+        latest = dv.formattedValue;
+      }
+    });
+    return latest;
+  }
+
+  function fieldCaption(encodingMap, encodingId) {
+    var fields = encodingMap[encodingId];
+    if (!fields || fields.length === 0) { return null; }
+    return fields[0].name;
+  }
+
+  CardApp.prototype.updateAndRender = function () {
+    var self = this;
+    return Promise.all([
+      self.getEncodingMap(),
+      self.getSummaryRows()
+    ]).then(function (results) {
+      var encodingMap = results[0];
+      var rows = results[1];
+      self.render(encodingMap, rows);
+    }).catch(function (err) {
+      showFatalError('Failed to read worksheet data: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  CardApp.prototype.render = function (encodingMap, rows) {
+    var settings = this.settings;
+    var s = {
+      aggregation: getSetting(settings, 'aggregation'),
+      comparisonSource: getSetting(settings, 'comparisonSource'),
+      fixedTarget: parseFloat(getSetting(settings, 'fixedTarget')),
+      higherIsBetter: boolOf(getSetting(settings, 'higherIsBetter')),
+      subtextMode: getSetting(settings, 'subtextMode'),
+      priorRelative: boolOf(getSetting(settings, 'priorRelative')),
+      contextNoun: getSetting(settings, 'contextNoun'),
+      customNumber: parseFloat(getSetting(settings, 'customNumber')),
+      customDecimals: parseInt(getSetting(settings, 'customDecimals'), 10),
+      customSymbol: getSetting(settings, 'customSymbol'),
+      customText: getSetting(settings, 'customText'),
+      valuePrefix: getSetting(settings, 'valuePrefix'),
+      valueSuffix: getSetting(settings, 'valueSuffix'),
+      valueDecimals: parseInt(getSetting(settings, 'valueDecimals'), 10),
+      valueAbbreviate: boolOf(getSetting(settings, 'valueAbbreviate')),
+      titleOverride: getSetting(settings, 'titleOverride'),
+      datePrefix: getSetting(settings, 'datePrefix'),
+      colorPositive: getSetting(settings, 'colorPositive'),
+      colorNegative: getSetting(settings, 'colorNegative'),
+      colorBackground: getSetting(settings, 'colorBackground'),
+      colorText: getSetting(settings, 'colorText')
+    };
+
+    document.documentElement.style.setProperty('--pos-color', s.colorPositive);
+    document.documentElement.style.setProperty('--neg-color', s.colorNegative);
+    document.documentElement.style.setProperty('--bg-color', s.colorBackground);
+    document.documentElement.style.setProperty('--text-color', s.colorText);
+
+    var hasValueField = !!(encodingMap[ENC.VALUE] && encodingMap[ENC.VALUE].length > 0);
+
+    var emptyState = document.getElementById('empty-state');
+    var contentWrap = document.getElementById('content-wrap');
+    var statusBar = document.getElementById('status-bar');
+
+    if (!hasValueField) {
+      emptyState.classList.remove('hidden');
+      contentWrap.classList.add('hidden');
+      statusBar.style.background = 'var(--neutral-color)';
+      return;
+    }
+
+    emptyState.classList.add('hidden');
+    contentWrap.classList.remove('hidden');
+
+    var valueFmt = {
+      prefix: s.valuePrefix,
+      suffix: s.valueSuffix,
+      decimals: s.valueDecimals,
+      abbreviate: s.valueAbbreviate
+    };
+
+    var value = aggregateField(rows, encodingMap, ENC.VALUE, s.aggregation, ENC.DATE);
+
+    var hasComparisonMeasure = !!(encodingMap[ENC.COMPARISON] && encodingMap[ENC.COMPARISON].length > 0);
+    var comparisonProvided = hasComparisonMeasure || s.comparisonSource === 'fixed';
+    var comparison = null;
+    if (hasComparisonMeasure) {
+      comparison = aggregateField(rows, encodingMap, ENC.COMPARISON, s.aggregation, ENC.DATE);
+    } else if (s.comparisonSource === 'fixed' && !isNaN(s.fixedTarget)) {
+      comparison = s.fixedTarget;
+    }
+
+    // Label + caption
+    var label = s.titleOverride || fieldCaption(encodingMap, ENC.VALUE) || '';
+    document.getElementById('label').textContent = label;
+
+    var dateStr = latestFormattedDate(rows, encodingMap);
+    var captionEl = document.getElementById('caption');
+    if (dateStr) {
+      captionEl.textContent = '(' + s.datePrefix + ' ' + dateStr + ')';
+    } else {
+      captionEl.textContent = '';
+    }
+
+    document.getElementById('value').textContent = formatValue(value, valueFmt);
+
+    // Variance / favorability
+    var favorable = null;
+    var variance = null;
+    var relPct = null;
+    if (comparisonProvided && comparison !== null && value !== null) {
+      variance = value - comparison;
+      relPct = comparison !== 0 ? (variance / comparison) * 100 : null;
+      favorable = (variance >= 0) === s.higherIsBetter;
+    }
+
+    if (favorable === null) {
+      statusBar.style.background = 'var(--neutral-color)';
+    } else {
+      statusBar.style.background = favorable ? 'var(--pos-color)' : 'var(--neg-color)';
+    }
+
+    var subtextEl = document.getElementById('subtext');
+    subtextEl.innerHTML = '';
+
+    function triangleSpan() {
+      var goingUp = value > comparison;
+      var goingDown = value < comparison;
+      var glyph = goingDown ? '▼' : (goingUp ? '▲' : '');
+      var span = document.createElement('span');
+      span.className = 'triangle';
+      span.textContent = glyph;
+      span.style.color = favorable ? 'var(--pos-color)' : 'var(--neg-color)';
+      return span;
+    }
+
+    function appendText(text) {
+      subtextEl.appendChild(document.createTextNode(text));
+    }
+
+    if (s.subtextMode === 'none') {
+      // nothing to show
+    } else if (s.subtextMode === 'context') {
+      var context = aggregateField(rows, encodingMap, ENC.CONTEXT, s.aggregation, ENC.DATE);
+      if (context !== null) {
+        appendText(formatInt(context) + ' ' + s.contextNoun);
+      }
+    } else if (s.subtextMode === 'custom') {
+      appendText(s.customNumber.toFixed(s.customDecimals) + s.customSymbol + ' ' + s.customText);
+    } else if (!comparisonProvided || comparison === null || value === null) {
+      // vsBudget / vsTarget / vsPrior all require a comparison value
+    } else if (s.subtextMode === 'vsBudget') {
+      var word1 = value < comparison ? 'under' : 'over';
+      var pctStr1 = favorable ? (formatPct1(relPct) + '%') : ('(' + formatPct1(relPct) + '%)');
+      var absStr1 = formatValue(Math.abs(variance), valueFmt);
+      absStr1 = favorable ? absStr1 : ('(' + absStr1 + ')');
+      appendText(pctStr1 + ' ' + word1 + ' budget - ');
+      subtextEl.appendChild(triangleSpan());
+      appendText(absStr1);
+    } else if (s.subtextMode === 'vsTarget') {
+      var word2 = value < comparison ? 'under' : 'over';
+      var pctStr2 = favorable ? (formatPct1(relPct) + '%') : ('(' + formatPct1(relPct) + '%)');
+      appendText(pctStr2 + ' ' + word2 + ' target');
+    } else if (s.subtextMode === 'vsPrior') {
+      if (s.priorRelative && relPct !== null) {
+        var sign = variance >= 0 ? '+' : '-';
+        appendText(sign + formatPct1(relPct) + '% vs prior period');
+      } else {
+        appendText(formatValue(variance, {
+          prefix: valueFmt.prefix,
+          suffix: valueFmt.suffix,
+          decimals: valueFmt.decimals,
+          abbreviate: valueFmt.abbreviate,
+          forceSign: true
+        }) + ' vs prior period');
+      }
+    }
+  };
+
+  // =========================================================================
+  // Dialog logic
+  // =========================================================================
+  function DialogApp() {}
+
+  DialogApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeDialogAsync().then(function () {
+      var settings = tableau.extensions.settings.getAll();
+      self.populateForm(settings);
+      self.wireSubtextModeVisibility();
+
+      document.getElementById('btn-cancel').addEventListener('click', function () {
+        tableau.extensions.ui.closeDialog('cancel');
+      });
+
+      document.getElementById('btn-save').addEventListener('click', function () {
+        self.save();
+      });
+    }, function (err) {
+      showFatalError('Failed to initialize settings dialog: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DialogApp.prototype.populateForm = function (settings) {
+    function val(key) { return getSetting(settings, key); }
+
+    document.getElementById('f-aggregation').value = val('aggregation');
+    document.getElementById('f-prefix').value = val('valuePrefix');
+    document.getElementById('f-suffix').value = val('valueSuffix');
+    document.getElementById('f-decimals').value = val('valueDecimals');
+    document.getElementById('f-abbreviate').checked = boolOf(val('valueAbbreviate'));
+    document.getElementById('f-title').value = val('titleOverride');
+    document.getElementById('f-date-prefix').value = val('datePrefix');
+
+    document.getElementById('f-comparison-source').value = val('comparisonSource');
+    document.getElementById('f-fixed-target').value = val('fixedTarget');
+    document.getElementById('f-higher-better').checked = boolOf(val('higherIsBetter'));
+
+    document.getElementById('f-subtext-mode').value = val('subtextMode');
+    document.getElementById('f-prior-relative').checked = boolOf(val('priorRelative'));
+    document.getElementById('f-context-noun').value = val('contextNoun');
+    document.getElementById('f-custom-number').value = val('customNumber');
+    document.getElementById('f-custom-decimals').value = val('customDecimals');
+    document.getElementById('f-custom-symbol').value = val('customSymbol');
+    document.getElementById('f-custom-text').value = val('customText');
+
+    document.getElementById('f-color-pos').value = val('colorPositive');
+    document.getElementById('f-color-neg').value = val('colorNegative');
+    document.getElementById('f-color-bg').value = val('colorBackground');
+    document.getElementById('f-color-text').value = val('colorText');
+  };
+
+  DialogApp.prototype.wireSubtextModeVisibility = function () {
+    function update() {
+      var mode = document.getElementById('f-subtext-mode').value;
+      document.querySelectorAll('.subtext-opt').forEach(function (el) {
+        el.classList.toggle('hidden', el.getAttribute('data-mode') !== mode);
+      });
+    }
+    document.getElementById('f-subtext-mode').addEventListener('change', update);
+    update();
+  };
+
+  DialogApp.prototype.save = function () {
+    var settings = {
+      aggregation: document.getElementById('f-aggregation').value,
+      valuePrefix: document.getElementById('f-prefix').value,
+      valueSuffix: document.getElementById('f-suffix').value,
+      valueDecimals: document.getElementById('f-decimals').value,
+      valueAbbreviate: String(document.getElementById('f-abbreviate').checked),
+      titleOverride: document.getElementById('f-title').value,
+      datePrefix: document.getElementById('f-date-prefix').value || 'through',
+
+      comparisonSource: document.getElementById('f-comparison-source').value,
+      fixedTarget: document.getElementById('f-fixed-target').value || '0',
+      higherIsBetter: String(document.getElementById('f-higher-better').checked),
+
+      subtextMode: document.getElementById('f-subtext-mode').value,
+      priorRelative: String(document.getElementById('f-prior-relative').checked),
+      contextNoun: document.getElementById('f-context-noun').value,
+      customNumber: document.getElementById('f-custom-number').value || '0',
+      customDecimals: document.getElementById('f-custom-decimals').value,
+      customSymbol: document.getElementById('f-custom-symbol').value,
+      customText: document.getElementById('f-custom-text').value,
+
+      colorPositive: document.getElementById('f-color-pos').value,
+      colorNegative: document.getElementById('f-color-neg').value,
+      colorBackground: document.getElementById('f-color-bg').value,
+      colorText: document.getElementById('f-color-text').value
+    };
+
+    Object.keys(settings).forEach(function (key) {
+      tableau.extensions.settings.set(key, settings[key]);
+    });
+
+    tableau.extensions.settings.saveAsync().then(function () {
+      tableau.extensions.ui.closeDialog('saved');
+    });
+  };
+
+  // =========================================================================
+  // Entry point
+  // =========================================================================
+  if (isDialog) {
+    document.getElementById('card').classList.add('hidden');
+    document.getElementById('dialog').style.display = 'block';
+    new DialogApp().init();
+  } else {
+    new CardApp().init();
+  }
+})();
+</script>
+</body>
+</html>
