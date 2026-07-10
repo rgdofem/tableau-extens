@@ -90,3 +90,68 @@ this formula produces when fed the *rounded, displayed* value/comparison numbers
 — that's expected, since the real worksheet aggregates carry more precision than the rounded
 figures shown in the table. Once wired to live data, the card computes off the true, unrounded
 aggregated values, so this isn't a formula bug.
+
+---
+
+# P&L Drill Table
+
+A second Tableau **viz extension**, living in the `pnl/` subfolder: an interactive financial
+statement table with expandable categories, a switchable child dimension (Subcategory or
+Location), derived variance columns, and favorability-colored variance bubbles. Plain HTML/CSS/JS
+in a single `index.html`, no build step.
+
+## Hosted URL
+
+```
+https://rgdofem.github.io/tableau-extens/pnl/index.html
+```
+
+This is the exact URL in `pnl/PnLDrillTable.trex`'s `<source-location>`. The `rgdofem.github.io`
+domain is already allow-listed on the Tableau Cloud site from the Super KPI Card, so no new admin
+step is needed.
+
+## Files
+
+- `pnl/index.html` — table view by default; `?dialog=1` loads the settings dialog.
+- `pnl/tableau.extensions.1.latest.min.js` — local copy of the Extensions API library.
+- `pnl/PnLDrillTable.trex` — the extension manifest.
+
+## Adding the extension to a worksheet
+
+1. In Tableau (2024.2+), open a worksheet, and on the **Marks** card click **Add Extension**.
+2. Choose **Access Local Extensions** and pick `pnl/PnLDrillTable.trex`.
+3. Drop fields on the encoding tiles (data must be at the child grain — Category ×
+   Subcategory × Location):
+
+   | Tile | Field | Required |
+   |------|-------|----------|
+   | **Category** | Parent line item dimension (Revenue, SG&A, Total Cost of Sales, …) | Yes |
+   | **Subcategory** | Child dimension option A | At least one child dim for drill |
+   | **Location** | Child dimension option B | At least one child dim for drill |
+   | **Polarity** | Dimension tagging lines revenue-type vs expense-type (or true/false) | No — defaults to higher-is-better |
+   | **Actual** | Current-period actual dollars (measure) | Yes |
+   | **Budget** | Current-period budget (measure) — enables Budget, Var $, Var % | No |
+   | **Prior Year** | Prior-year value (measure) — enables PY, PY Var % | No |
+   | **YTD Actual** | Year-to-date actual (measure) — enables YTD Act | No |
+   | **YTD Budget** | Year-to-date budget (measure) — with YTD Actual enables YTD Bdgt, YTD Var $, YTD Var | No |
+   | **Sort Order** | Numeric measure controlling category order (otherwise incoming row order is kept) | No |
+
+4. Click the gear icon in the header to configure: aggregation, default drill dimension and
+   labels, higher-is-better default and the Polarity value that means expense, number format
+   (scale/prefix/suffix/decimals/separator), column visibility, dollar-variance-as-bubble,
+   bubble colors, title, and default/persisted expand state.
+
+## How it works
+
+- The extension reads the worksheet's summary data at the child grain and performs the rollup
+  itself: collapsed category rows sum the base measures across all children; every derived
+  percentage is computed from the summed dollars after rollup, so percentages are correct at
+  both levels. Total/subtotal lines (Gross Profit, Net Income, …) must already exist in the
+  source data as their own category rows.
+- Variances are displayed in **favorability** terms: green when favorable, red when
+  unfavorable, where "favorable" respects each line's polarity (an expense under budget is
+  green). Dollar variances show the favorable magnitude, with unfavorable amounts in
+  accounting parentheses. The ▲/▼ triangle always reflects the raw direction of actual vs
+  comparison, independent of color — so an expense line under budget shows a green ▼.
+- The **Drill by** switcher re-groups the same rows by the other child dimension entirely
+  client-side; switching collapses all categories.

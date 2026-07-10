@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P&amp;L Drill Table</title>
+<style>
+  :root {
+    --fav-bg: #DCF0DC;
+    --fav-text: #2E7D32;
+    --unfav-bg: #FCE1DE;
+    --unfav-text: #C62828;
+    --text-color: #1A1A1A;
+    --label-color: #6B7280;
+    --border-color: #E5E7EB;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #FFFFFF;
+    overflow: hidden;
+  }
+
+  #error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #E05A4E;
+    color: white;
+    font-size: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    z-index: 9999;
+    display: none;
+  }
+
+  /* -------- Table view -------- */
+  #app {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #FFFFFF;
+  }
+
+  #app-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px 8px 14px;
+  }
+
+  #app-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #drill-wrap {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--label-color);
+  }
+
+  #drill-select {
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    background: #FFFFFF;
+    color: var(--text-color);
+  }
+
+  #drill-static {
+    font-weight: 600;
+    color: var(--text-color);
+  }
+
+  #gear {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--label-color);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #gear:hover { opacity: 1; }
+
+  #table-wrap {
+    flex: 1 1 auto;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    color: var(--text-color);
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #F3F4F6;
+    color: #6B7280;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 12px;
+    text-align: right;
+    white-space: nowrap;
+    border-bottom: 1px solid #D1D5DB;
+  }
+
+  thead th.line-item { text-align: left; }
+
+  tbody td {
+    padding: 7px 12px;
+    text-align: right;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+  }
+
+  tbody td.line-item { text-align: left; }
+
+  tr.category td.line-item {
+    font-weight: 700;
+    color: var(--text-color);
+  }
+
+  tr.child td.line-item {
+    font-weight: 400;
+    color: #4B5563;
+    padding-left: 38px;
+  }
+
+  tr.child.zebra td { background: #FAFAFB; }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    border: 1px solid #D1D5DB;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #6B7280;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    vertical-align: -2px;
+  }
+
+  .toggle:hover { border-color: #9CA3AF; color: var(--text-color); }
+
+  .toggle-spacer {
+    display: inline-block;
+    width: 24px;
+  }
+
+  tr.category.expandable td.line-item .cat-label { cursor: pointer; }
+
+  .bubble {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .bubble.fav { background: var(--fav-bg); color: var(--fav-text); }
+  .bubble.unfav { background: var(--unfav-bg); color: var(--unfav-text); }
+
+  .bubble .tri, .var-dollar .tri { font-size: 10px; margin-right: 2px; }
+
+  .var-dollar.fav { color: var(--fav-text); font-weight: 600; }
+  .var-dollar.unfav { color: var(--unfav-text); font-weight: 600; }
+
+  .muted { color: #9CA3AF; }
+
+  #empty-state {
+    padding: 24px 16px;
+    font-size: 13px;
+    color: var(--label-color);
+  }
+
+  /* -------- Dialog view -------- */
+  #dialog {
+    display: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 16px 20px;
+    overflow-y: auto;
+    background: #FFFFFF;
+    color: #1A1A1A;
+  }
+
+  #dialog h2 { font-size: 15px; margin: 0 0 12px 0; }
+
+  #dialog .field { margin-bottom: 10px; }
+
+  #dialog label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+
+  #dialog label.check { font-weight: 400; }
+
+  #dialog input[type="text"],
+  #dialog input[type="number"],
+  #dialog select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog input[type="checkbox"] { margin-right: 6px; }
+
+  #dialog .row { display: flex; gap: 10px; }
+  #dialog .row > .field { flex: 1; }
+
+  #dialog fieldset {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    margin: 0 0 14px 0;
+    padding: 10px 12px 12px 12px;
+  }
+
+  #dialog legend {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+    padding: 0 4px;
+  }
+
+  #dialog input[type="color"] {
+    width: 44px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog .col-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+  }
+
+  #dialog-buttons {
+    position: sticky;
+    bottom: 0;
+    background: #FFFFFF;
+    padding-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #E5E7EB;
+    margin-top: 6px;
+  }
+
+  #dialog button {
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    cursor: pointer;
+  }
+
+  #dialog button.primary {
+    background: #1A1A1A;
+    color: #FFFFFF;
+    border-color: #1A1A1A;
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="error-banner"></div>
+
+<!-- Table view -->
+<div id="app">
+  <div id="app-header">
+    <h1 id="app-title">Profit &amp; Loss Statement</h1>
+    <div id="drill-wrap" class="hidden">
+      <span>Drill by:</span>
+      <select id="drill-select"></select>
+      <span id="drill-static" class="hidden"></span>
+    </div>
+    <button id="gear" title="Configure">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M19.14 12.94a7.14 7.14 0 0 0 .06-.94 7.14 7.14 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.24.1.48-.02.6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 15.6 12 3.6 3.6 0 0 1 12 15.6Z"/>
+      </svg>
+    </button>
+  </div>
+  <div id="empty-state" class="hidden"></div>
+  <div id="table-wrap">
+    <table>
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Dialog / configuration view -->
+<div id="dialog">
+  <h2>P&amp;L Drill Table Settings</h2>
+
+  <fieldset>
+    <legend>General</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-title">Title</label>
+        <input type="text" id="f-title" placeholder="Profit &amp; Loss Statement">
+      </div>
+      <div class="field">
+        <label for="f-aggregation">Aggregation</label>
+        <select id="f-aggregation">
+          <option value="sum">Sum</option>
+          <option value="avg">Average</option>
+          <option value="min">Min</option>
+          <option value="max">Max</option>
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Drill</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-default-drill">Default drill dimension</label>
+        <select id="f-default-drill">
+          <option value="subcategory">Subcategory</option>
+          <option value="location">Location</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-label-subcategory">Subcategory display label</label>
+        <input type="text" id="f-label-subcategory" placeholder="Subcategory">
+      </div>
+      <div class="field">
+        <label for="f-label-location">Location display label</label>
+        <input type="text" id="f-label-location" placeholder="Location">
+      </div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-default-expanded"> Start with all categories expanded</label>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-persist-expanded"> Remember expanded categories (persist in workbook)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Favorability</legend>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-hib-default"> Higher is better (default when no Polarity field is mapped)</label>
+    </div>
+    <div class="field">
+      <label for="f-expense-value">Polarity value that means expense / lower-is-better</label>
+      <input type="text" id="f-expense-value" placeholder="Expense">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Number format</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-scale">Scale</label>
+        <select id="f-scale">
+          <option value="none">None</option>
+          <option value="K">Thousands (K)</option>
+          <option value="M">Millions (M)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-prefix">Prefix</label>
+        <input type="text" id="f-prefix" placeholder="$">
+      </div>
+      <div class="field">
+        <label for="f-suffix">Suffix</label>
+        <input type="text" id="f-suffix" placeholder="">
+      </div>
+      <div class="field">
+        <label for="f-decimals">Decimals</label>
+        <select id="f-decimals">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-thousands-sep"> Thousands separator</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Columns</legend>
+    <div class="col-grid">
+      <label class="check"><input type="checkbox" id="f-col-actual"> Actual</label>
+      <label class="check"><input type="checkbox" id="f-col-budget"> Budget</label>
+      <label class="check"><input type="checkbox" id="f-col-vardollar"> Var $</label>
+      <label class="check"><input type="checkbox" id="f-col-varpct"> Var %</label>
+      <label class="check"><input type="checkbox" id="f-col-py"> PY</label>
+      <label class="check"><input type="checkbox" id="f-col-pyvarpct"> PY Var %</label>
+      <label class="check"><input type="checkbox" id="f-col-ytdactual"> YTD Act</label>
+      <label class="check"><input type="checkbox" id="f-col-ytdbudget"> YTD Bdgt</label>
+      <label class="check"><input type="checkbox" id="f-col-ytdvardollar"> YTD Var $</label>
+      <label class="check"><input type="checkbox" id="f-col-ytdvarpct"> YTD Var</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Variance display</legend>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-dollar-bubbles"> Show dollar variances as bubbles too</label>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-fav-bg">Favorable fill</label>
+        <input type="color" id="f-fav-bg">
+      </div>
+      <div class="field">
+        <label for="f-fav-text">Favorable text</label>
+        <input type="color" id="f-fav-text">
+      </div>
+      <div class="field">
+        <label for="f-unfav-bg">Unfavorable fill</label>
+        <input type="color" id="f-unfav-bg">
+      </div>
+      <div class="field">
+        <label for="f-unfav-text">Unfavorable text</label>
+        <input type="color" id="f-unfav-text">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-text-color">General text color</label>
+        <input type="color" id="f-text-color">
+      </div>
+      <div class="field"></div>
+      <div class="field"></div>
+      <div class="field"></div>
+    </div>
+  </fieldset>
+
+  <div id="dialog-buttons">
+    <button id="btn-cancel">Cancel</button>
+    <button id="btn-save" class="primary">Save</button>
+  </div>
+</div>
+
+<script src="./tableau.extensions.1.latest.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var ENC = {
+    CATEGORY: 'category',
+    SUBCATEGORY: 'subcategory',
+    LOCATION: 'location',
+    POLARITY: 'polarity',
+    ACTUAL: 'actual',
+    BUDGET: 'budget',
+    PY: 'py',
+    YTD_ACTUAL: 'ytdactual',
+    YTD_BUDGET: 'ytdbudget',
+    SORT_ORDER: 'sortorder'
+  };
+
+  var MEASURE_ENCODINGS = [ENC.ACTUAL, ENC.BUDGET, ENC.PY, ENC.YTD_ACTUAL, ENC.YTD_BUDGET];
+
+  var DEFAULTS = {
+    aggregation: 'sum',
+    titleOverride: 'Profit & Loss Statement',
+    defaultDrill: 'subcategory',
+    labelSubcategory: 'Subcategory',
+    labelLocation: 'Location',
+    defaultExpanded: 'false',
+    persistExpanded: 'false',
+    hibDefault: 'true',
+    expenseValue: 'Expense',
+    scale: 'K',
+    prefix: '$',
+    suffix: '',
+    decimals: '0',
+    thousandsSep: 'true',
+    dollarBubbles: 'false',
+    favBg: '#DCF0DC',
+    favText: '#2E7D32',
+    unfavBg: '#FCE1DE',
+    unfavText: '#C62828',
+    textColor: '#1A1A1A',
+    colActual: 'true',
+    colBudget: 'true',
+    colVarDollar: 'true',
+    colVarPct: 'true',
+    colPY: 'true',
+    colPYVarPct: 'true',
+    colYTDActual: 'true',
+    colYTDBudget: 'true',
+    colYTDVarDollar: 'true',
+    colYTDVarPct: 'true',
+    expandedState: ''
+  };
+
+  function showFatalError(msg) {
+    var banner = document.getElementById('error-banner');
+    if (!banner) { return; }
+    banner.textContent = msg;
+    banner.style.display = 'block';
+  }
+
+  if (typeof tableau === 'undefined') {
+    showFatalError('Failed to load the Tableau Extensions API library (tableau.extensions.1.latest.min.js). ' +
+      'Make sure the file is deployed alongside index.html.');
+    return;
+  }
+
+  var isDialog = window.location.search.indexOf('dialog=1') !== -1;
+
+  function getSetting(settings, key) {
+    var v = settings[key];
+    return (v === undefined || v === null) ? DEFAULTS[key] : v;
+  }
+
+  function boolOf(v) { return v === true || v === 'true'; }
+
+  function readConfig(settings) {
+    return {
+      aggregation: getSetting(settings, 'aggregation'),
+      titleOverride: getSetting(settings, 'titleOverride'),
+      defaultDrill: getSetting(settings, 'defaultDrill'),
+      labelSubcategory: getSetting(settings, 'labelSubcategory') || 'Subcategory',
+      labelLocation: getSetting(settings, 'labelLocation') || 'Location',
+      defaultExpanded: boolOf(getSetting(settings, 'defaultExpanded')),
+      persistExpanded: boolOf(getSetting(settings, 'persistExpanded')),
+      hibDefault: boolOf(getSetting(settings, 'hibDefault')),
+      expenseValue: getSetting(settings, 'expenseValue'),
+      scale: getSetting(settings, 'scale'),
+      prefix: getSetting(settings, 'prefix'),
+      suffix: getSetting(settings, 'suffix'),
+      decimals: parseInt(getSetting(settings, 'decimals'), 10) || 0,
+      thousandsSep: boolOf(getSetting(settings, 'thousandsSep')),
+      dollarBubbles: boolOf(getSetting(settings, 'dollarBubbles')),
+      favBg: getSetting(settings, 'favBg'),
+      favText: getSetting(settings, 'favText'),
+      unfavBg: getSetting(settings, 'unfavBg'),
+      unfavText: getSetting(settings, 'unfavText'),
+      textColor: getSetting(settings, 'textColor'),
+      columns: {
+        actual: boolOf(getSetting(settings, 'colActual')),
+        budget: boolOf(getSetting(settings, 'colBudget')),
+        varDollar: boolOf(getSetting(settings, 'colVarDollar')),
+        varPct: boolOf(getSetting(settings, 'colVarPct')),
+        py: boolOf(getSetting(settings, 'colPY')),
+        pyVarPct: boolOf(getSetting(settings, 'colPYVarPct')),
+        ytdActual: boolOf(getSetting(settings, 'colYTDActual')),
+        ytdBudget: boolOf(getSetting(settings, 'colYTDBudget')),
+        ytdVarDollar: boolOf(getSetting(settings, 'colYTDVarDollar')),
+        ytdVarPct: boolOf(getSetting(settings, 'colYTDVarPct'))
+      }
+    };
+  }
+
+  // =========================================================================
+  // Formatting
+  // =========================================================================
+  function scaleParts(scale) {
+    if (scale === 'M') { return { divisor: 1e6, letter: 'M' }; }
+    if (scale === 'none') { return { divisor: 1, letter: '' }; }
+    return { divisor: 1e3, letter: 'K' };
+  }
+
+  // Accounting style: negatives are wrapped in parentheses.
+  function formatMoney(num, cfg) {
+    if (num === null || num === undefined || isNaN(num)) { return '–'; }
+    var sp = scaleParts(cfg.scale);
+    var scaled = Math.abs(num) / sp.divisor;
+    var numStr;
+    if (cfg.thousandsSep) {
+      numStr = scaled.toLocaleString('en-US', {
+        minimumFractionDigits: cfg.decimals,
+        maximumFractionDigits: cfg.decimals
+      });
+    } else {
+      numStr = scaled.toFixed(cfg.decimals);
+    }
+    var core = cfg.prefix + numStr + sp.letter + cfg.suffix;
+    return num < 0 ? '(' + core + ')' : core;
+  }
+
+  function formatPct(ratio) {
+    if (ratio === null || ratio === undefined || isNaN(ratio) || !isFinite(ratio)) { return null; }
+    return (Math.abs(ratio) * 100).toFixed(1) + '%';
+  }
+
+  // =========================================================================
+  // Favorability
+  // =========================================================================
+  // amount vs comparison for a line whose polarity is higherIsBetter.
+  // Returns null when either side is missing.
+  function computeVariance(amount, comparison, higherIsBetter) {
+    if (amount === null || amount === undefined || comparison === null || comparison === undefined) { return null; }
+    var rawDelta = amount - comparison;
+    var favorable = higherIsBetter ? (rawDelta >= 0) : (rawDelta <= 0);
+    return {
+      rawDelta: rawDelta,
+      favorable: favorable,
+      displayDollar: higherIsBetter ? rawDelta : -rawDelta,
+      pctRatio: comparison !== 0 ? rawDelta / comparison : null,
+      triangle: amount > comparison ? '▲' : (amount < comparison ? '▼' : '')
+    };
+  }
+
+  function resolveHib(polarityRaw, cfg) {
+    if (polarityRaw === null || polarityRaw === undefined) { return cfg.hibDefault; }
+    if (typeof polarityRaw === 'boolean') { return polarityRaw; }
+    var s = String(polarityRaw).trim().toLowerCase();
+    if (s === '' || s === '%null%' || s === 'null') { return cfg.hibDefault; }
+    if (s === 'true') { return true; }
+    if (s === 'false') { return false; }
+    return s !== String(cfg.expenseValue).trim().toLowerCase();
+  }
+
+  // =========================================================================
+  // Aggregation
+  // =========================================================================
+  function aggregate(values, mode) {
+    if (!values || values.length === 0) { return null; }
+    switch (mode) {
+      case 'avg': return values.reduce(function (a, b) { return a + b; }, 0) / values.length;
+      case 'min': return Math.min.apply(null, values);
+      case 'max': return Math.max.apply(null, values);
+      case 'sum':
+      default: return values.reduce(function (a, b) { return a + b; }, 0);
+    }
+  }
+
+  function nativeNumber(dataValue) {
+    if (!dataValue) { return NaN; }
+    var v = dataValue.value;
+    return typeof v === 'number' ? v : parseFloat(v);
+  }
+
+  // =========================================================================
+  // Table app
+  // =========================================================================
+  function TableApp() {
+    this.worksheet = null;
+    this.settings = {};
+    this.encodingMap = {};
+    this.rows = [];
+    this.drillBy = null;          // user's in-session choice; null = use default
+    this.expandedSet = {};        // used when defaultExpanded = false
+    this.collapsedSet = {};       // used when defaultExpanded = true
+    this.restoredPersisted = false;
+  }
+
+  TableApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeAsync({ configure: function () { self.openConfigDialog(); } }).then(function () {
+      self.worksheet = tableau.extensions.worksheetContent.worksheet;
+      self.settings = tableau.extensions.settings.getAll();
+
+      document.getElementById('gear').addEventListener('click', function () {
+        self.openConfigDialog();
+      });
+
+      document.getElementById('drill-select').addEventListener('change', function (e) {
+        self.drillBy = e.target.value;
+        self.expandedSet = {};
+        self.collapsedSet = {};
+        self.persistExpandedState();
+        self.render();
+      });
+
+      document.getElementById('table-body').addEventListener('click', function (e) {
+        var el = e.target;
+        while (el && el !== this) {
+          if (el.hasAttribute && el.hasAttribute('data-cat-key')) {
+            self.toggleCategory(el.getAttribute('data-cat-key'));
+            return;
+          }
+          el = el.parentNode;
+        }
+      });
+
+      self.worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () {
+        self.updateAndRender();
+      });
+
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, function (evt) {
+        self.settings = evt.newSettings;
+        self.render();
+      });
+
+      return self.updateAndRender();
+    }, function (err) {
+      showFatalError('Failed to initialize extension: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  TableApp.prototype.openConfigDialog = function () {
+    var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
+    tableau.extensions.ui.displayDialogAsync(popupUrl, '', { height: 760, width: 520 })
+      .catch(function (error) {
+        if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
+        console.error(error);
+      });
+  };
+
+  TableApp.prototype.getEncodingMap = function () {
+    return this.worksheet.getVisualSpecificationAsync().then(function (visualSpec) {
+      var map = {};
+      if (visualSpec.activeMarksSpecificationIndex < 0) { return map; }
+      var marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+      marksCard.encodings.forEach(function (encoding) {
+        if (!map[encoding.id]) { map[encoding.id] = []; }
+        map[encoding.id].push(encoding.field);
+      });
+      return map;
+    });
+  };
+
+  TableApp.prototype.getSummaryRows = function () {
+    return this.worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true }).then(function (reader) {
+      var pageCount = reader.pageCount;
+      var chain = Promise.resolve();
+      var pages = [];
+      for (var i = 0; i < pageCount; i++) {
+        (function (pageIndex) {
+          chain = chain.then(function () {
+            return reader.getPageAsync(pageIndex).then(function (page) { pages.push(page); });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        return reader.releaseAsync().then(function () { return pages; });
+      });
+    }).then(function (pages) {
+      var rows = [];
+      pages.forEach(function (page) {
+        var columns = page.columns;
+        for (var i = 0; i < page.data.length; i++) {
+          var row = {};
+          for (var j = 0; j < columns.length; j++) {
+            row[columns[j].fieldName] = page.data[i][columns[j].index];
+          }
+          rows.push(row);
+        }
+      });
+      return rows;
+    });
+  };
+
+  TableApp.prototype.updateAndRender = function () {
+    var self = this;
+    return Promise.all([self.getEncodingMap(), self.getSummaryRows()]).then(function (results) {
+      self.encodingMap = results[0];
+      self.rows = results[1];
+      self.render();
+    }).catch(function (err) {
+      showFatalError('Failed to read worksheet data: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  TableApp.prototype.fieldNameFor = function (encodingId) {
+    var fields = this.encodingMap[encodingId];
+    return (fields && fields.length > 0) ? fields[0].name : null;
+  };
+
+  // Which child dimension is active right now ('subcategory' | 'location' | null).
+  TableApp.prototype.effectiveDrill = function (cfg) {
+    var mapped = [];
+    if (this.fieldNameFor(ENC.SUBCATEGORY)) { mapped.push(ENC.SUBCATEGORY); }
+    if (this.fieldNameFor(ENC.LOCATION)) { mapped.push(ENC.LOCATION); }
+    if (mapped.length === 0) { return null; }
+    if (this.drillBy && mapped.indexOf(this.drillBy) !== -1) { return this.drillBy; }
+    if (mapped.indexOf(cfg.defaultDrill) !== -1) { return cfg.defaultDrill; }
+    return mapped[0];
+  };
+
+  TableApp.prototype.isExpanded = function (cfg, catKey) {
+    if (cfg.defaultExpanded) { return !this.collapsedSet[catKey]; }
+    return !!this.expandedSet[catKey];
+  };
+
+  TableApp.prototype.toggleCategory = function (catKey) {
+    var cfg = readConfig(this.settings);
+    if (cfg.defaultExpanded) {
+      if (this.collapsedSet[catKey]) { delete this.collapsedSet[catKey]; } else { this.collapsedSet[catKey] = true; }
+    } else {
+      if (this.expandedSet[catKey]) { delete this.expandedSet[catKey]; } else { this.expandedSet[catKey] = true; }
+    }
+    this.persistExpandedState();
+    this.render();
+  };
+
+  TableApp.prototype.persistExpandedState = function () {
+    var cfg = readConfig(this.settings);
+    if (!cfg.persistExpanded) { return; }
+    var state = JSON.stringify({
+      drillBy: this.drillBy,
+      expanded: Object.keys(this.expandedSet),
+      collapsed: Object.keys(this.collapsedSet)
+    });
+    var self = this;
+    clearTimeout(this._persistTimer);
+    this._persistTimer = setTimeout(function () {
+      try {
+        tableau.extensions.settings.set('expandedState', state);
+        tableau.extensions.settings.saveAsync().catch(function (e) { console.error(e); });
+      } catch (e) { console.error(e); }
+    }, 400);
+  };
+
+  TableApp.prototype.restorePersistedState = function (cfg) {
+    if (this.restoredPersisted) { return; }
+    this.restoredPersisted = true;
+    if (!cfg.persistExpanded) { return; }
+    var raw = getSetting(this.settings, 'expandedState');
+    if (!raw) { return; }
+    try {
+      var state = JSON.parse(raw);
+      if (state.drillBy) { this.drillBy = state.drillBy; }
+      var self = this;
+      (state.expanded || []).forEach(function (k) { self.expandedSet[k] = true; });
+      (state.collapsed || []).forEach(function (k) { self.collapsedSet[k] = true; });
+    } catch (e) { /* ignore malformed state */ }
+  };
+
+  // -------------------------------------------------------------------------
+  // Model: group summary rows into ordered categories with children.
+  // -------------------------------------------------------------------------
+  TableApp.prototype.buildModel = function (cfg, drill) {
+    var self = this;
+    var catField = this.fieldNameFor(ENC.CATEGORY);
+    var childField = drill ? this.fieldNameFor(drill) : null;
+    var polarityField = this.fieldNameFor(ENC.POLARITY);
+    var sortField = this.fieldNameFor(ENC.SORT_ORDER);
+
+    var measureFields = {};
+    MEASURE_ENCODINGS.forEach(function (encId) {
+      measureFields[encId] = self.fieldNameFor(encId);
+    });
+
+    function newBucket(key, label) {
+      var b = { key: key, label: label, values: {}, polarityRaw: null, sortValues: [] };
+      MEASURE_ENCODINGS.forEach(function (encId) { b.values[encId] = []; });
+      return b;
+    }
+
+    function pushRow(bucket, row) {
+      MEASURE_ENCODINGS.forEach(function (encId) {
+        var f = measureFields[encId];
+        if (!f) { return; }
+        var n = nativeNumber(row[f]);
+        if (!isNaN(n)) { bucket.values[encId].push(n); }
+      });
+      if (polarityField && bucket.polarityRaw === null) {
+        var pv = row[polarityField];
+        if (pv && pv.value !== null && pv.value !== undefined && pv.value !== '%null%') {
+          bucket.polarityRaw = pv.value;
+        }
+      }
+      if (sortField) {
+        var sv = nativeNumber(row[sortField]);
+        if (!isNaN(sv)) { bucket.sortValues.push(sv); }
+      }
+    }
+
+    var categories = [];
+    var catIndex = {};
+
+    this.rows.forEach(function (row) {
+      var catDV = row[catField];
+      if (!catDV) { return; }
+      var catKey = String(catDV.value);
+      var cat = catIndex[catKey];
+      if (!cat) {
+        cat = newBucket(catKey, catDV.formattedValue);
+        cat.children = [];
+        cat.childIndex = {};
+        catIndex[catKey] = cat;
+        categories.push(cat);
+      }
+      pushRow(cat, row);
+
+      if (childField) {
+        var childDV = row[childField];
+        if (childDV && childDV.value !== null && childDV.value !== undefined && String(childDV.value) !== '%null%') {
+          var childKey = String(childDV.value);
+          var child = cat.childIndex[childKey];
+          if (!child) {
+            child = newBucket(childKey, childDV.formattedValue);
+            cat.childIndex[childKey] = child;
+            cat.children.push(child);
+          }
+          pushRow(child, row);
+        }
+      }
+    });
+
+    // Aggregate raw value lists into a single number per measure.
+    function finalize(bucket, inheritedHib) {
+      var agg = {};
+      MEASURE_ENCODINGS.forEach(function (encId) {
+        agg[encId] = measureFields[encId] ? aggregate(bucket.values[encId], cfg.aggregation) : null;
+      });
+      bucket.agg = agg;
+      bucket.hib = inheritedHib !== undefined ? inheritedHib : resolveHib(bucket.polarityRaw, cfg);
+      bucket.sortValue = bucket.sortValues.length ? Math.min.apply(null, bucket.sortValues) : null;
+    }
+
+    categories.forEach(function (cat) {
+      finalize(cat);
+      cat.children.forEach(function (child) {
+        finalize(child, cat.hib); // children inherit the category's polarity
+      });
+    });
+
+    // Optional Sort Order measure controls category order; otherwise keep
+    // the incoming row order.
+    if (sortField) {
+      categories.forEach(function (c, i) { c._i = i; });
+      categories.sort(function (a, b) {
+        var av = a.sortValue === null ? Infinity : a.sortValue;
+        var bv = b.sortValue === null ? Infinity : b.sortValue;
+        return av === bv ? a._i - b._i : av - bv;
+      });
+    }
+
+    return {
+      categories: categories,
+      hasChildDim: !!childField,
+      measuresMapped: {
+        actual: !!measureFields[ENC.ACTUAL],
+        budget: !!measureFields[ENC.BUDGET],
+        py: !!measureFields[ENC.PY],
+        ytdActual: !!measureFields[ENC.YTD_ACTUAL],
+        ytdBudget: !!measureFields[ENC.YTD_BUDGET]
+      }
+    };
+  };
+
+  // -------------------------------------------------------------------------
+  // Column definitions (built per render from mapped measures + config)
+  // -------------------------------------------------------------------------
+  function buildColumns(model, cfg) {
+    var m = model.measuresMapped;
+    var c = cfg.columns;
+    var cols = [];
+    if (m.actual && c.actual) {
+      cols.push({ id: 'actual', label: 'Actual', type: 'money', get: function (a) { return a[ENC.ACTUAL]; } });
+    }
+    if (m.budget && c.budget) {
+      cols.push({ id: 'budget', label: 'Budget', type: 'money', get: function (a) { return a[ENC.BUDGET]; } });
+    }
+    if (m.actual && m.budget && c.varDollar) {
+      cols.push({ id: 'varDollar', label: 'Var $', type: 'varDollar', amount: ENC.ACTUAL, comparison: ENC.BUDGET });
+    }
+    if (m.actual && m.budget && c.varPct) {
+      cols.push({ id: 'varPct', label: 'Var %', type: 'varPct', amount: ENC.ACTUAL, comparison: ENC.BUDGET });
+    }
+    if (m.py && c.py) {
+      cols.push({ id: 'py', label: 'PY', type: 'money', get: function (a) { return a[ENC.PY]; } });
+    }
+    if (m.actual && m.py && c.pyVarPct) {
+      cols.push({ id: 'pyVarPct', label: 'PY Var %', type: 'varPct', amount: ENC.ACTUAL, comparison: ENC.PY });
+    }
+    if (m.ytdActual && c.ytdActual) {
+      cols.push({ id: 'ytdActual', label: 'YTD Act', type: 'money', get: function (a) { return a[ENC.YTD_ACTUAL]; } });
+    }
+    if (m.ytdBudget && c.ytdBudget) {
+      cols.push({ id: 'ytdBudget', label: 'YTD Bdgt', type: 'money', get: function (a) { return a[ENC.YTD_BUDGET]; } });
+    }
+    if (m.ytdActual && m.ytdBudget && c.ytdVarDollar) {
+      cols.push({ id: 'ytdVarDollar', label: 'YTD Var $', type: 'varDollar', amount: ENC.YTD_ACTUAL, comparison: ENC.YTD_BUDGET });
+    }
+    if (m.ytdActual && m.ytdBudget && c.ytdVarPct) {
+      cols.push({ id: 'ytdVarPct', label: 'YTD Var', type: 'varPct', amount: ENC.YTD_ACTUAL, comparison: ENC.YTD_BUDGET });
+    }
+    return cols;
+  }
+
+  // -------------------------------------------------------------------------
+  // Rendering
+  // -------------------------------------------------------------------------
+  function mutedCell(td) {
+    td.textContent = '–';
+    td.className += ' muted';
+  }
+
+  function renderMoneyCell(td, value, cfg) {
+    if (value === null || value === undefined || isNaN(value)) { mutedCell(td); return; }
+    td.textContent = formatMoney(value, cfg);
+  }
+
+  function renderVarDollarCell(td, bucket, col, cfg) {
+    var v = computeVariance(bucket.agg[col.amount], bucket.agg[col.comparison], bucket.hib);
+    if (!v) { mutedCell(td); return; }
+    var span = document.createElement('span');
+    span.className = (cfg.dollarBubbles ? 'bubble ' : 'var-dollar ') + (v.favorable ? 'fav' : 'unfav');
+    span.textContent = formatMoney(v.displayDollar, cfg);
+    td.appendChild(span);
+  }
+
+  function renderVarPctCell(td, bucket, col, cfg) {
+    var v = computeVariance(bucket.agg[col.amount], bucket.agg[col.comparison], bucket.hib);
+    var pctStr = v ? formatPct(v.pctRatio) : null;
+    if (!v || pctStr === null) { mutedCell(td); return; }
+    var span = document.createElement('span');
+    span.className = 'bubble ' + (v.favorable ? 'fav' : 'unfav');
+    if (v.triangle) {
+      var tri = document.createElement('span');
+      tri.className = 'tri';
+      tri.textContent = v.triangle;
+      span.appendChild(tri);
+    }
+    span.appendChild(document.createTextNode(pctStr));
+    td.appendChild(span);
+  }
+
+  function renderDataCells(tr, bucket, columns, cfg) {
+    columns.forEach(function (col) {
+      var td = document.createElement('td');
+      if (col.type === 'money') {
+        renderMoneyCell(td, col.get(bucket.agg), cfg);
+      } else if (col.type === 'varDollar') {
+        renderVarDollarCell(td, bucket, col, cfg);
+      } else if (col.type === 'varPct') {
+        renderVarPctCell(td, bucket, col, cfg);
+      }
+      tr.appendChild(td);
+    });
+  }
+
+  TableApp.prototype.render = function () {
+    var cfg = readConfig(this.settings);
+    this.restorePersistedState(cfg);
+
+    document.documentElement.style.setProperty('--fav-bg', cfg.favBg);
+    document.documentElement.style.setProperty('--fav-text', cfg.favText);
+    document.documentElement.style.setProperty('--unfav-bg', cfg.unfavBg);
+    document.documentElement.style.setProperty('--unfav-text', cfg.unfavText);
+    document.documentElement.style.setProperty('--text-color', cfg.textColor);
+
+    document.getElementById('app-title').textContent = cfg.titleOverride || 'Profit & Loss Statement';
+
+    var emptyState = document.getElementById('empty-state');
+    var tableWrap = document.getElementById('table-wrap');
+    var thead = document.getElementById('table-head');
+    var tbody = document.getElementById('table-body');
+
+    var catField = this.fieldNameFor(ENC.CATEGORY);
+    var actualField = this.fieldNameFor(ENC.ACTUAL);
+    if (!catField || !actualField) {
+      emptyState.textContent = 'Drop a dimension on the Category tile and a measure on the Actual tile to build the table. ' +
+        'Add Subcategory or Location to enable drill-down, and Budget / PY / YTD measures for variance columns.';
+      emptyState.classList.remove('hidden');
+      tableWrap.classList.add('hidden');
+      this.renderDrillSwitcher(cfg, null);
+      return;
+    }
+    emptyState.classList.add('hidden');
+    tableWrap.classList.remove('hidden');
+
+    var drill = this.effectiveDrill(cfg);
+    this.renderDrillSwitcher(cfg, drill);
+
+    var model = this.buildModel(cfg, drill);
+    var columns = buildColumns(model, cfg);
+
+    // Header
+    thead.innerHTML = '';
+    var headRow = document.createElement('tr');
+    var thLine = document.createElement('th');
+    thLine.className = 'line-item';
+    thLine.textContent = 'Line Item';
+    headRow.appendChild(thLine);
+    columns.forEach(function (col) {
+      var th = document.createElement('th');
+      th.textContent = col.label;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+
+    // Body
+    tbody.innerHTML = '';
+    var self = this;
+    model.categories.forEach(function (cat) {
+      var expandable = model.hasChildDim && cat.children.length > 0;
+      var expanded = expandable && self.isExpanded(cfg, cat.key);
+
+      var tr = document.createElement('tr');
+      tr.className = 'category' + (expandable ? ' expandable' : '');
+
+      var tdLine = document.createElement('td');
+      tdLine.className = 'line-item';
+      if (expandable) {
+        var toggle = document.createElement('span');
+        toggle.className = 'toggle';
+        toggle.textContent = expanded ? '−' : '+';
+        toggle.setAttribute('data-cat-key', cat.key);
+        toggle.setAttribute('title', expanded ? 'Collapse' : 'Expand');
+        tdLine.appendChild(toggle);
+      } else {
+        var spacer = document.createElement('span');
+        spacer.className = 'toggle-spacer';
+        tdLine.appendChild(spacer);
+      }
+      var labelSpan = document.createElement('span');
+      labelSpan.className = 'cat-label';
+      labelSpan.textContent = cat.label;
+      if (expandable) { labelSpan.setAttribute('data-cat-key', cat.key); }
+      tdLine.appendChild(labelSpan);
+      tr.appendChild(tdLine);
+
+      renderDataCells(tr, cat, columns, cfg);
+      tbody.appendChild(tr);
+
+      if (expanded) {
+        cat.children.forEach(function (child, idx) {
+          var ctr = document.createElement('tr');
+          ctr.className = 'child' + (idx % 2 === 1 ? ' zebra' : '');
+          var ctd = document.createElement('td');
+          ctd.className = 'line-item';
+          ctd.textContent = child.label;
+          ctr.appendChild(ctd);
+          renderDataCells(ctr, child, columns, cfg);
+          tbody.appendChild(ctr);
+        });
+      }
+    });
+  };
+
+  TableApp.prototype.renderDrillSwitcher = function (cfg, drill) {
+    var wrap = document.getElementById('drill-wrap');
+    var select = document.getElementById('drill-select');
+    var staticLabel = document.getElementById('drill-static');
+
+    var options = [];
+    if (this.fieldNameFor(ENC.SUBCATEGORY)) { options.push({ value: ENC.SUBCATEGORY, label: cfg.labelSubcategory }); }
+    if (this.fieldNameFor(ENC.LOCATION)) { options.push({ value: ENC.LOCATION, label: cfg.labelLocation }); }
+
+    if (options.length === 0) {
+      wrap.classList.add('hidden');
+      return;
+    }
+    wrap.classList.remove('hidden');
+
+    if (options.length === 1) {
+      select.classList.add('hidden');
+      staticLabel.classList.remove('hidden');
+      staticLabel.textContent = options[0].label;
+      return;
+    }
+
+    staticLabel.classList.add('hidden');
+    select.classList.remove('hidden');
+    select.innerHTML = '';
+    options.forEach(function (opt) {
+      var o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      select.appendChild(o);
+    });
+    select.value = drill;
+  };
+
+  // =========================================================================
+  // Dialog logic
+  // =========================================================================
+  function DialogApp() {}
+
+  DialogApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeDialogAsync().then(function () {
+      self.populateForm(tableau.extensions.settings.getAll());
+
+      document.getElementById('btn-cancel').addEventListener('click', function () {
+        tableau.extensions.ui.closeDialog('cancel');
+      });
+      document.getElementById('btn-save').addEventListener('click', function () {
+        self.save();
+      });
+    }, function (err) {
+      showFatalError('Failed to initialize settings dialog: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DialogApp.prototype.populateForm = function (settings) {
+    function val(key) { return getSetting(settings, key); }
+
+    document.getElementById('f-title').value = val('titleOverride');
+    document.getElementById('f-aggregation').value = val('aggregation');
+
+    document.getElementById('f-default-drill').value = val('defaultDrill');
+    document.getElementById('f-label-subcategory').value = val('labelSubcategory');
+    document.getElementById('f-label-location').value = val('labelLocation');
+    document.getElementById('f-default-expanded').checked = boolOf(val('defaultExpanded'));
+    document.getElementById('f-persist-expanded').checked = boolOf(val('persistExpanded'));
+
+    document.getElementById('f-hib-default').checked = boolOf(val('hibDefault'));
+    document.getElementById('f-expense-value').value = val('expenseValue');
+
+    document.getElementById('f-scale').value = val('scale');
+    document.getElementById('f-prefix').value = val('prefix');
+    document.getElementById('f-suffix').value = val('suffix');
+    document.getElementById('f-decimals').value = val('decimals');
+    document.getElementById('f-thousands-sep').checked = boolOf(val('thousandsSep'));
+
+    document.getElementById('f-col-actual').checked = boolOf(val('colActual'));
+    document.getElementById('f-col-budget').checked = boolOf(val('colBudget'));
+    document.getElementById('f-col-vardollar').checked = boolOf(val('colVarDollar'));
+    document.getElementById('f-col-varpct').checked = boolOf(val('colVarPct'));
+    document.getElementById('f-col-py').checked = boolOf(val('colPY'));
+    document.getElementById('f-col-pyvarpct').checked = boolOf(val('colPYVarPct'));
+    document.getElementById('f-col-ytdactual').checked = boolOf(val('colYTDActual'));
+    document.getElementById('f-col-ytdbudget').checked = boolOf(val('colYTDBudget'));
+    document.getElementById('f-col-ytdvardollar').checked = boolOf(val('colYTDVarDollar'));
+    document.getElementById('f-col-ytdvarpct').checked = boolOf(val('colYTDVarPct'));
+
+    document.getElementById('f-dollar-bubbles').checked = boolOf(val('dollarBubbles'));
+    document.getElementById('f-fav-bg').value = val('favBg');
+    document.getElementById('f-fav-text').value = val('favText');
+    document.getElementById('f-unfav-bg').value = val('unfavBg');
+    document.getElementById('f-unfav-text').value = val('unfavText');
+    document.getElementById('f-text-color').value = val('textColor');
+  };
+
+  DialogApp.prototype.save = function () {
+    var settings = {
+      titleOverride: document.getElementById('f-title').value,
+      aggregation: document.getElementById('f-aggregation').value,
+
+      defaultDrill: document.getElementById('f-default-drill').value,
+      labelSubcategory: document.getElementById('f-label-subcategory').value,
+      labelLocation: document.getElementById('f-label-location').value,
+      defaultExpanded: String(document.getElementById('f-default-expanded').checked),
+      persistExpanded: String(document.getElementById('f-persist-expanded').checked),
+
+      hibDefault: String(document.getElementById('f-hib-default').checked),
+      expenseValue: document.getElementById('f-expense-value').value || 'Expense',
+
+      scale: document.getElementById('f-scale').value,
+      prefix: document.getElementById('f-prefix').value,
+      suffix: document.getElementById('f-suffix').value,
+      decimals: document.getElementById('f-decimals').value,
+      thousandsSep: String(document.getElementById('f-thousands-sep').checked),
+
+      colActual: String(document.getElementById('f-col-actual').checked),
+      colBudget: String(document.getElementById('f-col-budget').checked),
+      colVarDollar: String(document.getElementById('f-col-vardollar').checked),
+      colVarPct: String(document.getElementById('f-col-varpct').checked),
+      colPY: String(document.getElementById('f-col-py').checked),
+      colPYVarPct: String(document.getElementById('f-col-pyvarpct').checked),
+      colYTDActual: String(document.getElementById('f-col-ytdactual').checked),
+      colYTDBudget: String(document.getElementById('f-col-ytdbudget').checked),
+      colYTDVarDollar: String(document.getElementById('f-col-ytdvardollar').checked),
+      colYTDVarPct: String(document.getElementById('f-col-ytdvarpct').checked),
+
+      dollarBubbles: String(document.getElementById('f-dollar-bubbles').checked),
+      favBg: document.getElementById('f-fav-bg').value,
+      favText: document.getElementById('f-fav-text').value,
+      unfavBg: document.getElementById('f-unfav-bg').value,
+      unfavText: document.getElementById('f-unfav-text').value,
+      textColor: document.getElementById('f-text-color').value
+    };
+
+    Object.keys(settings).forEach(function (key) {
+      tableau.extensions.settings.set(key, settings[key]);
+    });
+
+    tableau.extensions.settings.saveAsync().then(function () {
+      tableau.extensions.ui.closeDialog('saved');
+    });
+  };
+
+  // =========================================================================
+  // Entry point
+  // =========================================================================
+  if (isDialog) {
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('dialog').style.display = 'block';
+    new DialogApp().init();
+  } else {
+    new TableApp().init();
+  }
+})();
+</script>
+</body>
+</html>
