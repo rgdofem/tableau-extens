@@ -241,6 +241,11 @@
 
   #dialog label.check { font-weight: 400; }
 
+  #dialog .note {
+    font-size: 12px;
+    color: #6B7280;
+  }
+
   #dialog input[type="text"],
   #dialog input[type="number"],
   #dialog select {
@@ -284,6 +289,20 @@
     grid-template-columns: 1fr 1fr;
     gap: 4px 12px;
   }
+
+  #dialog .role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  #dialog .role-row > label {
+    flex: 0 0 90px;
+    margin: 0;
+  }
+
+  #dialog .role-row > select { flex: 1; }
 
   #dialog-buttons {
     position: sticky;
@@ -367,26 +386,19 @@
   </fieldset>
 
   <fieldset>
+    <legend>Measure roles</legend>
+    <div id="roles-none" class="field note hidden">Drop measures on the Measures tile, then reopen this dialog to assign roles. Until then, roles are auto-detected from field names.</div>
+    <div id="role-rows"></div>
+  </fieldset>
+
+  <fieldset>
     <legend>Drill</legend>
-    <div class="row">
-      <div class="field">
-        <label for="f-default-drill">Default drill dimension</label>
-        <select id="f-default-drill">
-          <option value="subcategory">Subcategory</option>
-          <option value="location">Location</option>
-        </select>
-      </div>
+    <div id="drill-none" class="field note hidden">Drop one or two dimensions on the Drill To tile, then reopen this dialog to configure them.</div>
+    <div class="field" id="f-default-drill-wrap">
+      <label for="f-default-drill">Default drill dimension</label>
+      <select id="f-default-drill"></select>
     </div>
-    <div class="row">
-      <div class="field">
-        <label for="f-label-subcategory">Subcategory display label</label>
-        <input type="text" id="f-label-subcategory" placeholder="Subcategory">
-      </div>
-      <div class="field">
-        <label for="f-label-location">Location display label</label>
-        <input type="text" id="f-label-location" placeholder="Location">
-      </div>
-    </div>
+    <div id="drill-labels"></div>
     <div class="field">
       <label class="check"><input type="checkbox" id="f-default-expanded"> Start with all categories expanded</label>
     </div>
@@ -500,27 +512,33 @@
 (function () {
   'use strict';
 
+  // Encoding tile ids (the schema allows at most 4 tiles per worksheet
+  // extension, so dimensions and measures are grouped onto shared tiles).
   var ENC = {
     CATEGORY: 'category',
-    SUBCATEGORY: 'subcategory',
-    LOCATION: 'location',
+    DRILL: 'drilldim',
     POLARITY: 'polarity',
-    ACTUAL: 'actual',
-    BUDGET: 'budget',
-    PY: 'py',
-    YTD_ACTUAL: 'ytdactual',
-    YTD_BUDGET: 'ytdbudget',
-    SORT_ORDER: 'sortorder'
+    MEASURES: 'measures'
   };
 
-  var MEASURE_ENCODINGS = [ENC.ACTUAL, ENC.BUDGET, ENC.PY, ENC.YTD_ACTUAL, ENC.YTD_BUDGET];
+  // Roles the fields on the Measures tile can play.
+  var ROLES = ['actual', 'budget', 'py', 'ytdactual', 'ytdbudget', 'sortorder'];
+  var ROLE_LABELS = {
+    actual: 'Actual',
+    budget: 'Budget',
+    py: 'Prior Year',
+    ytdactual: 'YTD Actual',
+    ytdbudget: 'YTD Budget',
+    sortorder: 'Sort Order'
+  };
+  var VALUE_ROLES = ['actual', 'budget', 'py', 'ytdactual', 'ytdbudget'];
 
   var DEFAULTS = {
     aggregation: 'sum',
     titleOverride: 'Profit & Loss Statement',
-    defaultDrill: 'subcategory',
-    labelSubcategory: 'Subcategory',
-    labelLocation: 'Location',
+    measureRoles: '{}',
+    drillLabels: '{}',
+    defaultDrillField: '',
     defaultExpanded: 'false',
     persistExpanded: 'false',
     hibDefault: 'true',
@@ -571,13 +589,20 @@
 
   function boolOf(v) { return v === true || v === 'true'; }
 
+  function parseJsonMap(raw) {
+    try {
+      var v = JSON.parse(raw || '{}');
+      return (v && typeof v === 'object') ? v : {};
+    } catch (e) { return {}; }
+  }
+
   function readConfig(settings) {
     return {
       aggregation: getSetting(settings, 'aggregation'),
       titleOverride: getSetting(settings, 'titleOverride'),
-      defaultDrill: getSetting(settings, 'defaultDrill'),
-      labelSubcategory: getSetting(settings, 'labelSubcategory') || 'Subcategory',
-      labelLocation: getSetting(settings, 'labelLocation') || 'Location',
+      measureRoles: getSetting(settings, 'measureRoles'),
+      drillLabels: parseJsonMap(getSetting(settings, 'drillLabels')),
+      defaultDrillField: getSetting(settings, 'defaultDrillField'),
       defaultExpanded: boolOf(getSetting(settings, 'defaultExpanded')),
       persistExpanded: boolOf(getSetting(settings, 'persistExpanded')),
       hibDefault: boolOf(getSetting(settings, 'hibDefault')),
@@ -606,6 +631,52 @@
         ytdVarPct: boolOf(getSetting(settings, 'colYTDVarPct'))
       }
     };
+  }
+
+  // =========================================================================
+  // Measure role resolution
+  // =========================================================================
+  function classifyMeasureName(name) {
+    var s = String(name).toLowerCase();
+    if (/sort/.test(s)) { return 'sortorder'; }
+    if (/ytd|year.?to.?date/.test(s)) {
+      return /budg|plan|target/.test(s) ? 'ytdbudget' : 'ytdactual';
+    }
+    if (/budg|plan|target|forecast/.test(s)) { return 'budget'; }
+    if (/prior|previous|last.?year|(^|[^a-z])py([^a-z]|$)|(^|[^a-z])ly([^a-z]|$)/.test(s)) { return 'py'; }
+    if (/actual/.test(s)) { return 'actual'; }
+    return null;
+  }
+
+  // Resolve role -> fieldName for the fields currently on the Measures tile.
+  // Saved explicit assignments win ('' means explicitly none); unassigned
+  // fields are classified by name; anything left fills empty roles in order.
+  function resolveMeasureRoles(fieldNames, savedJson) {
+    var saved = parseJsonMap(savedJson);
+    var assign = {};
+    var used = {};
+
+    ROLES.forEach(function (role) {
+      var f = saved[role];
+      if (f === '') { assign[role] = null; }
+      else if (f && fieldNames.indexOf(f) !== -1 && !used[f]) { assign[role] = f; used[f] = true; }
+    });
+
+    fieldNames.forEach(function (f) {
+      if (used[f]) { return; }
+      var role = classifyMeasureName(f);
+      if (role && !(role in assign)) { assign[role] = f; used[f] = true; }
+    });
+
+    fieldNames.forEach(function (f) {
+      if (used[f]) { return; }
+      for (var i = 0; i < ROLES.length; i++) {
+        if (!(ROLES[i] in assign)) { assign[ROLES[i]] = f; used[f] = true; break; }
+      }
+    });
+
+    ROLES.forEach(function (role) { if (!(role in assign)) { assign[role] = null; } });
+    return assign;
   }
 
   // =========================================================================
@@ -643,8 +714,6 @@
   // =========================================================================
   // Favorability
   // =========================================================================
-  // amount vs comparison for a line whose polarity is higherIsBetter.
-  // Returns null when either side is missing.
   function computeVariance(amount, comparison, higherIsBetter) {
     if (amount === null || amount === undefined || comparison === null || comparison === undefined) { return null; }
     var rawDelta = amount - comparison;
@@ -696,7 +765,7 @@
     this.settings = {};
     this.encodingMap = {};
     this.rows = [];
-    this.drillBy = null;          // user's in-session choice; null = use default
+    this.drillBy = null;          // field name chosen in-session; null = use default
     this.expandedSet = {};        // used when defaultExpanded = false
     this.collapsedSet = {};       // used when defaultExpanded = true
     this.restoredPersisted = false;
@@ -746,9 +815,23 @@
     });
   };
 
+  TableApp.prototype.fieldNamesFor = function (encodingId) {
+    var fields = this.encodingMap[encodingId] || [];
+    return fields.map(function (f) { return f.name; });
+  };
+
+  TableApp.prototype.fieldNameFor = function (encodingId) {
+    var names = this.fieldNamesFor(encodingId);
+    return names.length > 0 ? names[0] : null;
+  };
+
   TableApp.prototype.openConfigDialog = function () {
+    var payload = JSON.stringify({
+      drillFields: this.fieldNamesFor(ENC.DRILL),
+      measureFields: this.fieldNamesFor(ENC.MEASURES)
+    });
     var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
-    tableau.extensions.ui.displayDialogAsync(popupUrl, '', { height: 760, width: 520 })
+    tableau.extensions.ui.displayDialogAsync(popupUrl, payload, { height: 780, width: 520 })
       .catch(function (error) {
         if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
         console.error(error);
@@ -810,19 +893,12 @@
     });
   };
 
-  TableApp.prototype.fieldNameFor = function (encodingId) {
-    var fields = this.encodingMap[encodingId];
-    return (fields && fields.length > 0) ? fields[0].name : null;
-  };
-
-  // Which child dimension is active right now ('subcategory' | 'location' | null).
+  // Which drill field is active right now (a field name from the Drill To tile, or null).
   TableApp.prototype.effectiveDrill = function (cfg) {
-    var mapped = [];
-    if (this.fieldNameFor(ENC.SUBCATEGORY)) { mapped.push(ENC.SUBCATEGORY); }
-    if (this.fieldNameFor(ENC.LOCATION)) { mapped.push(ENC.LOCATION); }
+    var mapped = this.fieldNamesFor(ENC.DRILL);
     if (mapped.length === 0) { return null; }
     if (this.drillBy && mapped.indexOf(this.drillBy) !== -1) { return this.drillBy; }
-    if (mapped.indexOf(cfg.defaultDrill) !== -1) { return cfg.defaultDrill; }
+    if (cfg.defaultDrillField && mapped.indexOf(cfg.defaultDrillField) !== -1) { return cfg.defaultDrillField; }
     return mapped[0];
   };
 
@@ -850,7 +926,6 @@
       expanded: Object.keys(this.expandedSet),
       collapsed: Object.keys(this.collapsedSet)
     });
-    var self = this;
     clearTimeout(this._persistTimer);
     this._persistTimer = setTimeout(function () {
       try {
@@ -877,31 +952,26 @@
 
   // -------------------------------------------------------------------------
   // Model: group summary rows into ordered categories with children.
+  // roleMap: role -> fieldName (or null) for the fields on the Measures tile.
   // -------------------------------------------------------------------------
-  TableApp.prototype.buildModel = function (cfg, drill) {
-    var self = this;
+  TableApp.prototype.buildModel = function (cfg, drillField, roleMap) {
     var catField = this.fieldNameFor(ENC.CATEGORY);
-    var childField = drill ? this.fieldNameFor(drill) : null;
+    var childField = drillField;
     var polarityField = this.fieldNameFor(ENC.POLARITY);
-    var sortField = this.fieldNameFor(ENC.SORT_ORDER);
-
-    var measureFields = {};
-    MEASURE_ENCODINGS.forEach(function (encId) {
-      measureFields[encId] = self.fieldNameFor(encId);
-    });
+    var sortField = roleMap.sortorder;
 
     function newBucket(key, label) {
       var b = { key: key, label: label, values: {}, polarityRaw: null, sortValues: [] };
-      MEASURE_ENCODINGS.forEach(function (encId) { b.values[encId] = []; });
+      VALUE_ROLES.forEach(function (role) { b.values[role] = []; });
       return b;
     }
 
     function pushRow(bucket, row) {
-      MEASURE_ENCODINGS.forEach(function (encId) {
-        var f = measureFields[encId];
+      VALUE_ROLES.forEach(function (role) {
+        var f = roleMap[role];
         if (!f) { return; }
         var n = nativeNumber(row[f]);
-        if (!isNaN(n)) { bucket.values[encId].push(n); }
+        if (!isNaN(n)) { bucket.values[role].push(n); }
       });
       if (polarityField && bucket.polarityRaw === null) {
         var pv = row[polarityField];
@@ -947,11 +1017,11 @@
       }
     });
 
-    // Aggregate raw value lists into a single number per measure.
+    // Aggregate raw value lists into a single number per role.
     function finalize(bucket, inheritedHib) {
       var agg = {};
-      MEASURE_ENCODINGS.forEach(function (encId) {
-        agg[encId] = measureFields[encId] ? aggregate(bucket.values[encId], cfg.aggregation) : null;
+      VALUE_ROLES.forEach(function (role) {
+        agg[role] = roleMap[role] ? aggregate(bucket.values[role], cfg.aggregation) : null;
       });
       bucket.agg = agg;
       bucket.hib = inheritedHib !== undefined ? inheritedHib : resolveHib(bucket.polarityRaw, cfg);
@@ -980,51 +1050,51 @@
       categories: categories,
       hasChildDim: !!childField,
       measuresMapped: {
-        actual: !!measureFields[ENC.ACTUAL],
-        budget: !!measureFields[ENC.BUDGET],
-        py: !!measureFields[ENC.PY],
-        ytdActual: !!measureFields[ENC.YTD_ACTUAL],
-        ytdBudget: !!measureFields[ENC.YTD_BUDGET]
+        actual: !!roleMap.actual,
+        budget: !!roleMap.budget,
+        py: !!roleMap.py,
+        ytdActual: !!roleMap.ytdactual,
+        ytdBudget: !!roleMap.ytdbudget
       }
     };
   };
 
   // -------------------------------------------------------------------------
-  // Column definitions (built per render from mapped measures + config)
+  // Column definitions (built per render from mapped roles + config)
   // -------------------------------------------------------------------------
   function buildColumns(model, cfg) {
     var m = model.measuresMapped;
     var c = cfg.columns;
     var cols = [];
     if (m.actual && c.actual) {
-      cols.push({ id: 'actual', label: 'Actual', type: 'money', get: function (a) { return a[ENC.ACTUAL]; } });
+      cols.push({ id: 'actual', label: 'Actual', type: 'money', get: function (a) { return a.actual; } });
     }
     if (m.budget && c.budget) {
-      cols.push({ id: 'budget', label: 'Budget', type: 'money', get: function (a) { return a[ENC.BUDGET]; } });
+      cols.push({ id: 'budget', label: 'Budget', type: 'money', get: function (a) { return a.budget; } });
     }
     if (m.actual && m.budget && c.varDollar) {
-      cols.push({ id: 'varDollar', label: 'Var $', type: 'varDollar', amount: ENC.ACTUAL, comparison: ENC.BUDGET });
+      cols.push({ id: 'varDollar', label: 'Var $', type: 'varDollar', amount: 'actual', comparison: 'budget' });
     }
     if (m.actual && m.budget && c.varPct) {
-      cols.push({ id: 'varPct', label: 'Var %', type: 'varPct', amount: ENC.ACTUAL, comparison: ENC.BUDGET });
+      cols.push({ id: 'varPct', label: 'Var %', type: 'varPct', amount: 'actual', comparison: 'budget' });
     }
     if (m.py && c.py) {
-      cols.push({ id: 'py', label: 'PY', type: 'money', get: function (a) { return a[ENC.PY]; } });
+      cols.push({ id: 'py', label: 'PY', type: 'money', get: function (a) { return a.py; } });
     }
     if (m.actual && m.py && c.pyVarPct) {
-      cols.push({ id: 'pyVarPct', label: 'PY Var %', type: 'varPct', amount: ENC.ACTUAL, comparison: ENC.PY });
+      cols.push({ id: 'pyVarPct', label: 'PY Var %', type: 'varPct', amount: 'actual', comparison: 'py' });
     }
     if (m.ytdActual && c.ytdActual) {
-      cols.push({ id: 'ytdActual', label: 'YTD Act', type: 'money', get: function (a) { return a[ENC.YTD_ACTUAL]; } });
+      cols.push({ id: 'ytdActual', label: 'YTD Act', type: 'money', get: function (a) { return a.ytdactual; } });
     }
     if (m.ytdBudget && c.ytdBudget) {
-      cols.push({ id: 'ytdBudget', label: 'YTD Bdgt', type: 'money', get: function (a) { return a[ENC.YTD_BUDGET]; } });
+      cols.push({ id: 'ytdBudget', label: 'YTD Bdgt', type: 'money', get: function (a) { return a.ytdbudget; } });
     }
     if (m.ytdActual && m.ytdBudget && c.ytdVarDollar) {
-      cols.push({ id: 'ytdVarDollar', label: 'YTD Var $', type: 'varDollar', amount: ENC.YTD_ACTUAL, comparison: ENC.YTD_BUDGET });
+      cols.push({ id: 'ytdVarDollar', label: 'YTD Var $', type: 'varDollar', amount: 'ytdactual', comparison: 'ytdbudget' });
     }
     if (m.ytdActual && m.ytdBudget && c.ytdVarPct) {
-      cols.push({ id: 'ytdVarPct', label: 'YTD Var', type: 'varPct', amount: ENC.YTD_ACTUAL, comparison: ENC.YTD_BUDGET });
+      cols.push({ id: 'ytdVarPct', label: 'YTD Var', type: 'varPct', amount: 'ytdactual', comparison: 'ytdbudget' });
     }
     return cols;
   }
@@ -1099,10 +1169,12 @@
     var tbody = document.getElementById('table-body');
 
     var catField = this.fieldNameFor(ENC.CATEGORY);
-    var actualField = this.fieldNameFor(ENC.ACTUAL);
-    if (!catField || !actualField) {
-      emptyState.textContent = 'Drop a dimension on the Category tile and a measure on the Actual tile to build the table. ' +
-        'Add Subcategory or Location to enable drill-down, and Budget / PY / YTD measures for variance columns.';
+    var measureFields = this.fieldNamesFor(ENC.MEASURES);
+    var roleMap = resolveMeasureRoles(measureFields, cfg.measureRoles);
+
+    if (!catField || !roleMap.actual) {
+      emptyState.textContent = 'Drop a dimension on the Category tile and at least one measure (Actual) on the Measures tile to build the table. ' +
+        'Add child dimensions on the Drill To tile to enable drill-down, and more measures (Budget, PY, YTD) for variance columns.';
       emptyState.classList.remove('hidden');
       tableWrap.classList.add('hidden');
       this.renderDrillSwitcher(cfg, null);
@@ -1111,10 +1183,10 @@
     emptyState.classList.add('hidden');
     tableWrap.classList.remove('hidden');
 
-    var drill = this.effectiveDrill(cfg);
-    this.renderDrillSwitcher(cfg, drill);
+    var drillField = this.effectiveDrill(cfg);
+    this.renderDrillSwitcher(cfg, drillField);
 
-    var model = this.buildModel(cfg, drill);
+    var model = this.buildModel(cfg, drillField, roleMap);
     var columns = buildColumns(model, cfg);
 
     // Header
@@ -1180,14 +1252,14 @@
     });
   };
 
-  TableApp.prototype.renderDrillSwitcher = function (cfg, drill) {
+  TableApp.prototype.renderDrillSwitcher = function (cfg, drillField) {
     var wrap = document.getElementById('drill-wrap');
     var select = document.getElementById('drill-select');
     var staticLabel = document.getElementById('drill-static');
 
-    var options = [];
-    if (this.fieldNameFor(ENC.SUBCATEGORY)) { options.push({ value: ENC.SUBCATEGORY, label: cfg.labelSubcategory }); }
-    if (this.fieldNameFor(ENC.LOCATION)) { options.push({ value: ENC.LOCATION, label: cfg.labelLocation }); }
+    var options = this.fieldNamesFor(ENC.DRILL).map(function (f) {
+      return { value: f, label: cfg.drillLabels[f] || f };
+    });
 
     if (options.length === 0) {
       wrap.classList.add('hidden');
@@ -1211,18 +1283,30 @@
       o.textContent = opt.label;
       select.appendChild(o);
     });
-    select.value = drill;
+    select.value = drillField;
   };
 
   // =========================================================================
   // Dialog logic
   // =========================================================================
-  function DialogApp() {}
+  function DialogApp() {
+    this.drillFields = [];
+    this.measureFields = [];
+  }
 
   DialogApp.prototype.init = function () {
     var self = this;
-    return tableau.extensions.initializeDialogAsync().then(function () {
-      self.populateForm(tableau.extensions.settings.getAll());
+    return tableau.extensions.initializeDialogAsync().then(function (payload) {
+      try {
+        var p = JSON.parse(payload || '{}');
+        self.drillFields = p.drillFields || [];
+        self.measureFields = p.measureFields || [];
+      } catch (e) { /* leave empty */ }
+
+      var settings = tableau.extensions.settings.getAll();
+      self.buildRoleRows(settings);
+      self.buildDrillConfig(settings);
+      self.populateForm(settings);
 
       document.getElementById('btn-cancel').addEventListener('click', function () {
         tableau.extensions.ui.closeDialog('cancel');
@@ -1235,15 +1319,98 @@
     });
   };
 
+  // One select per role, options: Auto / None / each measure field.
+  DialogApp.prototype.buildRoleRows = function (settings) {
+    var container = document.getElementById('role-rows');
+    container.innerHTML = '';
+    if (this.measureFields.length === 0) {
+      document.getElementById('roles-none').classList.remove('hidden');
+      return;
+    }
+    var saved = parseJsonMap(getSetting(settings, 'measureRoles'));
+    var measureFields = this.measureFields;
+
+    ROLES.forEach(function (role) {
+      var row = document.createElement('div');
+      row.className = 'role-row';
+
+      var label = document.createElement('label');
+      label.textContent = ROLE_LABELS[role];
+      row.appendChild(label);
+
+      var select = document.createElement('select');
+      select.id = 'f-role-' + role;
+      [{ v: '(auto)', t: 'Auto-detect' }, { v: '(none)', t: 'None' }].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o.v;
+        opt.textContent = o.t;
+        select.appendChild(opt);
+      });
+      measureFields.forEach(function (f) {
+        var opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        select.appendChild(opt);
+      });
+
+      var savedVal = saved[role];
+      if (savedVal === '') { select.value = '(none)'; }
+      else if (savedVal && measureFields.indexOf(savedVal) !== -1) { select.value = savedVal; }
+      else { select.value = '(auto)'; }
+
+      row.appendChild(select);
+      container.appendChild(row);
+    });
+  };
+
+  // Default-drill select plus a display-label input per drill field.
+  DialogApp.prototype.buildDrillConfig = function (settings) {
+    var defaultWrap = document.getElementById('f-default-drill-wrap');
+    var defaultSelect = document.getElementById('f-default-drill');
+    var labelsContainer = document.getElementById('drill-labels');
+    labelsContainer.innerHTML = '';
+
+    if (this.drillFields.length === 0) {
+      document.getElementById('drill-none').classList.remove('hidden');
+      defaultWrap.classList.add('hidden');
+      return;
+    }
+
+    defaultSelect.innerHTML = '';
+    var savedDefault = getSetting(settings, 'defaultDrillField');
+    this.drillFields.forEach(function (f) {
+      var opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      defaultSelect.appendChild(opt);
+    });
+    defaultSelect.value = (savedDefault && this.drillFields.indexOf(savedDefault) !== -1) ? savedDefault : this.drillFields[0];
+
+    var savedLabels = parseJsonMap(getSetting(settings, 'drillLabels'));
+    this.drillFields.forEach(function (f, i) {
+      var div = document.createElement('div');
+      div.className = 'field';
+      var label = document.createElement('label');
+      label.setAttribute('for', 'f-drill-label-' + i);
+      label.textContent = 'Display label for "' + f + '"';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'f-drill-label-' + i;
+      input.setAttribute('data-field', f);
+      input.placeholder = f;
+      input.value = savedLabels[f] || '';
+      div.appendChild(label);
+      div.appendChild(input);
+      labelsContainer.appendChild(div);
+    });
+  };
+
   DialogApp.prototype.populateForm = function (settings) {
     function val(key) { return getSetting(settings, key); }
 
     document.getElementById('f-title').value = val('titleOverride');
     document.getElementById('f-aggregation').value = val('aggregation');
 
-    document.getElementById('f-default-drill').value = val('defaultDrill');
-    document.getElementById('f-label-subcategory').value = val('labelSubcategory');
-    document.getElementById('f-label-location').value = val('labelLocation');
     document.getElementById('f-default-expanded').checked = boolOf(val('defaultExpanded'));
     document.getElementById('f-persist-expanded').checked = boolOf(val('persistExpanded'));
 
@@ -1280,9 +1447,6 @@
       titleOverride: document.getElementById('f-title').value,
       aggregation: document.getElementById('f-aggregation').value,
 
-      defaultDrill: document.getElementById('f-default-drill').value,
-      labelSubcategory: document.getElementById('f-label-subcategory').value,
-      labelLocation: document.getElementById('f-label-location').value,
       defaultExpanded: String(document.getElementById('f-default-expanded').checked),
       persistExpanded: String(document.getElementById('f-persist-expanded').checked),
 
@@ -1313,6 +1477,27 @@
       unfavText: document.getElementById('f-unfav-text').value,
       textColor: document.getElementById('f-text-color').value
     };
+
+    // Measure roles: only store explicit choices; Auto stays unstored.
+    if (this.measureFields.length > 0) {
+      var roles = {};
+      ROLES.forEach(function (role) {
+        var v = document.getElementById('f-role-' + role).value;
+        if (v === '(none)') { roles[role] = ''; }
+        else if (v !== '(auto)') { roles[role] = v; }
+      });
+      settings.measureRoles = JSON.stringify(roles);
+    }
+
+    // Drill config
+    if (this.drillFields.length > 0) {
+      settings.defaultDrillField = document.getElementById('f-default-drill').value;
+      var labels = {};
+      document.querySelectorAll('#drill-labels input[data-field]').forEach(function (input) {
+        if (input.value.trim() !== '') { labels[input.getAttribute('data-field')] = input.value.trim(); }
+      });
+      settings.drillLabels = JSON.stringify(labels);
+    }
 
     Object.keys(settings).forEach(function (key) {
       tableau.extensions.settings.set(key, settings[key]);

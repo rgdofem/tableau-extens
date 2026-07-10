@@ -22,34 +22,23 @@
       <encoding-icon token="letter-c"/>
       <tooltip resource-id="tt-category">The parent P&amp;L line item (Revenue, SG&amp;A, Total Cost of Sales, etc). Required.</tooltip>
     </encoding>
-    <encoding id="subcategory">
-      <display-name resource-id="enc-subcategory">Subcategory</display-name>
+    <encoding id="drilldim">
+      <display-name resource-id="enc-drilldim">Drill To</display-name>
       <data-spec>
         <data-type>string</data-type>
       </data-spec>
       <role-spec>
         <role-type>discrete-dimension</role-type>
       </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="letter-s"/>
-      <tooltip resource-id="tt-subcategory">Optional child dimension: subcategory line items revealed when a category is expanded.</tooltip>
-    </encoding>
-    <encoding id="location">
-      <display-name resource-id="enc-location">Location</display-name>
-      <data-spec>
-        <data-type>string</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>discrete-dimension</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="globe"/>
-      <tooltip resource-id="tt-location">Optional child dimension: locations revealed when a category is expanded.</tooltip>
+      <fields max-count="2"/>
+      <encoding-icon token="level"/>
+      <tooltip resource-id="tt-drilldim">Child dimensions revealed when a category expands (e.g. Subcategory and/or Location). Drop up to two; the header switcher toggles between them.</tooltip>
     </encoding>
     <encoding id="polarity">
       <display-name resource-id="enc-polarity">Polarity</display-name>
       <data-spec>
         <data-type>string</data-type>
+        <data-type>boolean</data-type>
       </data-spec>
       <role-spec>
         <role-type>discrete-dimension</role-type>
@@ -58,77 +47,17 @@
       <encoding-icon token="delta-up"/>
       <tooltip resource-id="tt-polarity">Optional: tags each line as revenue-type vs expense-type (or true/false for higher-is-better). Used only for variance color and sign.</tooltip>
     </encoding>
-    <encoding id="actual">
-      <display-name resource-id="enc-actual">Actual</display-name>
+    <encoding id="measures">
+      <display-name resource-id="enc-measures">Measures</display-name>
       <data-spec>
         <data-type>numeric</data-type>
       </data-spec>
       <role-spec>
         <role-type>continuous-measure</role-type>
       </role-spec>
-      <fields max-count="1"/>
+      <fields max-count="6"/>
       <encoding-icon token="dollar"/>
-      <tooltip resource-id="tt-actual">Current-period actual dollars. Required.</tooltip>
-    </encoding>
-    <encoding id="budget">
-      <display-name resource-id="enc-budget">Budget</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="letter-b"/>
-      <tooltip resource-id="tt-budget">Optional current-period budget. Enables Budget, Var $, and Var % columns.</tooltip>
-    </encoding>
-    <encoding id="py">
-      <display-name resource-id="enc-py">Prior Year</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="letter-p"/>
-      <tooltip resource-id="tt-py">Optional prior-year value. Enables PY and PY Var % columns.</tooltip>
-    </encoding>
-    <encoding id="ytdactual">
-      <display-name resource-id="enc-ytdactual">YTD Actual</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="letter-y"/>
-      <tooltip resource-id="tt-ytdactual">Optional year-to-date actual. Enables the YTD Act column.</tooltip>
-    </encoding>
-    <encoding id="ytdbudget">
-      <display-name resource-id="enc-ytdbudget">YTD Budget</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="letter-t"/>
-      <tooltip resource-id="tt-ytdbudget">Optional year-to-date budget. With YTD Actual, enables YTD Bdgt, YTD Var $, and YTD Var columns.</tooltip>
-    </encoding>
-    <encoding id="sortorder">
-      <display-name resource-id="enc-sortorder">Sort Order</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <encoding-icon token="hash"/>
-      <tooltip resource-id="tt-sortorder">Optional numeric measure that controls category ordering. If omitted, the incoming row order is kept.</tooltip>
+      <tooltip resource-id="tt-measures">Up to six measures: Actual (required), Budget, Prior Year, YTD Actual, YTD Budget, Sort Order. Roles are auto-detected from field names and can be reassigned in the settings dialog.</tooltip>
     </encoding>
   </worksheet-extension>
   <resources>
@@ -138,62 +67,26 @@
     <resource id="enc-category">
       <text locale="en_US">Category</text>
     </resource>
-    <resource id="enc-subcategory">
-      <text locale="en_US">Subcategory</text>
-    </resource>
-    <resource id="enc-location">
-      <text locale="en_US">Location</text>
+    <resource id="enc-drilldim">
+      <text locale="en_US">Drill To</text>
     </resource>
     <resource id="enc-polarity">
       <text locale="en_US">Polarity</text>
     </resource>
-    <resource id="enc-actual">
-      <text locale="en_US">Actual</text>
-    </resource>
-    <resource id="enc-budget">
-      <text locale="en_US">Budget</text>
-    </resource>
-    <resource id="enc-py">
-      <text locale="en_US">Prior Year</text>
-    </resource>
-    <resource id="enc-ytdactual">
-      <text locale="en_US">YTD Actual</text>
-    </resource>
-    <resource id="enc-ytdbudget">
-      <text locale="en_US">YTD Budget</text>
-    </resource>
-    <resource id="enc-sortorder">
-      <text locale="en_US">Sort Order</text>
+    <resource id="enc-measures">
+      <text locale="en_US">Measures</text>
     </resource>
     <resource id="tt-category">
       <text locale="en_US">The parent P&amp;L line item (Revenue, SG&amp;A, Total Cost of Sales, etc). Required.</text>
     </resource>
-    <resource id="tt-subcategory">
-      <text locale="en_US">Optional child dimension: subcategory line items revealed when a category is expanded.</text>
-    </resource>
-    <resource id="tt-location">
-      <text locale="en_US">Optional child dimension: locations revealed when a category is expanded.</text>
+    <resource id="tt-drilldim">
+      <text locale="en_US">Child dimensions revealed when a category expands (e.g. Subcategory and/or Location). Drop up to two; the header switcher toggles between them.</text>
     </resource>
     <resource id="tt-polarity">
       <text locale="en_US">Optional: tags each line as revenue-type vs expense-type (or true/false for higher-is-better). Used only for variance color and sign.</text>
     </resource>
-    <resource id="tt-actual">
-      <text locale="en_US">Current-period actual dollars. Required.</text>
-    </resource>
-    <resource id="tt-budget">
-      <text locale="en_US">Optional current-period budget. Enables Budget, Var $, and Var % columns.</text>
-    </resource>
-    <resource id="tt-py">
-      <text locale="en_US">Optional prior-year value. Enables PY and PY Var % columns.</text>
-    </resource>
-    <resource id="tt-ytdactual">
-      <text locale="en_US">Optional year-to-date actual. Enables the YTD Act column.</text>
-    </resource>
-    <resource id="tt-ytdbudget">
-      <text locale="en_US">Optional year-to-date budget. With YTD Actual, enables YTD Bdgt, YTD Var $, and YTD Var columns.</text>
-    </resource>
-    <resource id="tt-sortorder">
-      <text locale="en_US">Optional numeric measure that controls category ordering. If omitted, the incoming row order is kept.</text>
+    <resource id="tt-measures">
+      <text locale="en_US">Up to six measures: Actual (required), Budget, Prior Year, YTD Actual, YTD Budget, Sort Order. Roles are auto-detected from field names and can be reassigned in the settings dialog.</text>
     </resource>
   </resources>
 </manifest>

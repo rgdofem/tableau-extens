@@ -121,23 +121,26 @@ step is needed.
 1. In Tableau (2024.2+), open a worksheet, and on the **Marks** card click **Add Extension**.
 2. Choose **Access Local Extensions** and pick `pnl/PnLDrillTable.trex`.
 3. Drop fields on the encoding tiles (data must be at the child grain — Category ×
-   Subcategory × Location):
+   Subcategory × Location). Tableau's manifest schema allows at most **4 custom encoding
+   tiles**, so dimensions and measures share tiles:
 
-   | Tile | Field | Required |
-   |------|-------|----------|
-   | **Category** | Parent line item dimension (Revenue, SG&A, Total Cost of Sales, …) | Yes |
-   | **Subcategory** | Child dimension option A | At least one child dim for drill |
-   | **Location** | Child dimension option B | At least one child dim for drill |
-   | **Polarity** | Dimension tagging lines revenue-type vs expense-type (or true/false) | No — defaults to higher-is-better |
-   | **Actual** | Current-period actual dollars (measure) | Yes |
-   | **Budget** | Current-period budget (measure) — enables Budget, Var $, Var % | No |
-   | **Prior Year** | Prior-year value (measure) — enables PY, PY Var % | No |
-   | **YTD Actual** | Year-to-date actual (measure) — enables YTD Act | No |
-   | **YTD Budget** | Year-to-date budget (measure) — with YTD Actual enables YTD Bdgt, YTD Var $, YTD Var | No |
-   | **Sort Order** | Numeric measure controlling category order (otherwise incoming row order is kept) | No |
+   | Tile | Fields (max) | Required |
+   |------|--------------|----------|
+   | **Category** | Parent line item dimension (Revenue, SG&A, Total Cost of Sales, …) (1) | Yes |
+   | **Drill To** | Child dimensions revealed on expand — e.g. Subcategory and/or Location (2). The header switcher toggles between them. | At least one for drill-down |
+   | **Polarity** | Dimension tagging lines revenue-type vs expense-type, or true/false for higher-is-better (1) | No — defaults to higher-is-better |
+   | **Measures** | Actual, Budget, Prior Year, YTD Actual, YTD Budget, Sort Order (6) | Actual only |
 
-4. Click the gear icon in the header to configure: aggregation, default drill dimension and
-   labels, higher-is-better default and the Polarity value that means expense, number format
+   Measure **roles are auto-detected from field names** (e.g. a field containing "budget"
+   becomes Budget; "YTD" + "budget" becomes YTD Budget; "sort" becomes Sort Order; "PY",
+   "prior", or "last year" becomes Prior Year). Only mapped roles produce columns: Budget
+   enables Budget/Var $/Var %, Prior Year enables PY/PY Var %, YTD Actual + YTD Budget enable
+   the YTD columns, and Sort Order controls category ordering (otherwise incoming row order
+   is kept).
+
+4. Click the gear icon in the header to configure: measure role assignments (override
+   auto-detection per role), aggregation, default drill dimension and display labels,
+   higher-is-better default and the Polarity value that means expense, number format
    (scale/prefix/suffix/decimals/separator), column visibility, dollar-variance-as-bubble,
    bubble colors, title, and default/persisted expand state.
 
