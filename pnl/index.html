@@ -209,6 +209,17 @@
 
   .muted { color: #9CA3AF; }
 
+  tr.grand-total td {
+    border-top: 2px solid #374151;
+    border-bottom: none;
+    font-weight: 700;
+  }
+
+  tr.grand-total td.line-item {
+    font-weight: 700;
+    color: var(--text-color);
+  }
+
   #empty-state {
     padding: 24px 16px;
     font-size: 13px;
@@ -282,6 +293,19 @@
     padding: 0;
     border: 1px solid #D1D5DB;
     border-radius: 6px;
+  }
+
+  #dialog .cat-list {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+
+  #dialog .cat-list label.check {
+    display: block;
+    margin-bottom: 2px;
   }
 
   #dialog .col-grid {
@@ -410,11 +434,51 @@
   <fieldset>
     <legend>Favorability</legend>
     <div class="field">
-      <label class="check"><input type="checkbox" id="f-hib-default"> Higher is better (default when no Polarity field is mapped)</label>
+      <label for="f-default-polarity">Default polarity for unlisted categories</label>
+      <select id="f-default-polarity">
+        <option value="lower">Lower is better (expenses)</option>
+        <option value="higher">Higher is better (revenue)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Higher-is-better categories</label>
+      <div id="hib-cat-list" class="cat-list"></div>
+      <div id="hib-cat-text-wrap" class="hidden">
+        <input type="text" id="f-hib-cat-text" placeholder="Revenue, Other Income">
+      </div>
+      <div class="note">Listed categories are treated as revenue-type (higher is better). Everything else uses the Polarity field if mapped, then the default above. Children inherit their parent's polarity.</div>
     </div>
     <div class="field">
       <label for="f-expense-value">Polarity value that means expense / lower-is-better</label>
       <input type="text" id="f-expense-value" placeholder="Expense">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Grand total</legend>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-show-total"> Show grand total row</label>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-total-label">Grand total label</label>
+        <input type="text" id="f-total-label" placeholder="Total">
+      </div>
+      <div class="field">
+        <label for="f-total-polarity">Grand total polarity</label>
+        <select id="f-total-polarity">
+          <option value="higher">Higher is better</option>
+          <option value="lower">Lower is better</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Exclude categories from total</label>
+      <div id="excl-cat-list" class="cat-list"></div>
+      <div id="excl-cat-text-wrap" class="hidden">
+        <input type="text" id="f-excl-cat-text" placeholder="EBITDA, Depreciation">
+      </div>
+      <div class="note">The total is a polarity-signed sum: higher-is-better categories add, lower-is-better categories subtract. Its variances use the same formulas as every other row, colored by the polarity above.</div>
     </div>
   </fieldset>
 
@@ -541,8 +605,13 @@
     defaultDrillField: '',
     defaultExpanded: 'false',
     persistExpanded: 'false',
-    hibDefault: 'true',
+    hibDefault: 'false',
+    hibCategories: '[]',
     expenseValue: 'Expense',
+    showGrandTotal: 'false',
+    grandTotalLabel: 'Total',
+    grandTotalHib: 'true',
+    grandTotalExclude: '[]',
     scale: 'K',
     prefix: '$',
     suffix: '',
@@ -596,6 +665,24 @@
     } catch (e) { return {}; }
   }
 
+  // Accepts a JSON array string or a comma-separated list of names.
+  function parseNameList(raw) {
+    if (!raw) { return []; }
+    try {
+      var v = JSON.parse(raw);
+      if (Array.isArray(v)) { return v.map(String); }
+    } catch (e) { /* fall through to comma parsing */ }
+    return String(raw).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function normName(s) { return String(s).trim().toLowerCase(); }
+
+  function nameSet(list) {
+    var set = {};
+    list.forEach(function (n) { set[normName(n)] = true; });
+    return set;
+  }
+
   function readConfig(settings) {
     return {
       aggregation: getSetting(settings, 'aggregation'),
@@ -606,7 +693,12 @@
       defaultExpanded: boolOf(getSetting(settings, 'defaultExpanded')),
       persistExpanded: boolOf(getSetting(settings, 'persistExpanded')),
       hibDefault: boolOf(getSetting(settings, 'hibDefault')),
+      hibCategorySet: nameSet(parseNameList(getSetting(settings, 'hibCategories'))),
       expenseValue: getSetting(settings, 'expenseValue'),
+      showGrandTotal: boolOf(getSetting(settings, 'showGrandTotal')),
+      grandTotalLabel: getSetting(settings, 'grandTotalLabel') || 'Total',
+      grandTotalHib: boolOf(getSetting(settings, 'grandTotalHib')),
+      grandTotalExcludeSet: nameSet(parseNameList(getSetting(settings, 'grandTotalExclude'))),
       scale: getSetting(settings, 'scale'),
       prefix: getSetting(settings, 'prefix'),
       suffix: getSetting(settings, 'suffix'),
@@ -737,6 +829,14 @@
     return s !== String(cfg.expenseValue).trim().toLowerCase();
   }
 
+  // Polarity resolution order for a category: (1) the settings list of
+  // higher-is-better names, (2) the mapped Polarity field value, (3) the
+  // default polarity toggle. Children inherit their parent's result.
+  function resolveCategoryHib(bucket, cfg) {
+    if (cfg.hibCategorySet[normName(bucket.key)] || cfg.hibCategorySet[normName(bucket.label)]) { return true; }
+    return resolveHib(bucket.polarityRaw, cfg);
+  }
+
   // =========================================================================
   // Aggregation
   // =========================================================================
@@ -825,13 +925,30 @@
     return names.length > 0 ? names[0] : null;
   };
 
+  // Distinct Category values currently in the data, in row order (used to
+  // populate the category multi-selects in the settings dialog).
+  TableApp.prototype.categoryValues = function () {
+    var catField = this.fieldNameFor(ENC.CATEGORY);
+    if (!catField) { return []; }
+    var seen = {};
+    var out = [];
+    this.rows.forEach(function (row) {
+      var dv = row[catField];
+      if (!dv || dv.value === null || dv.value === undefined || String(dv.value) === '%null%') { return; }
+      var label = dv.formattedValue;
+      if (!seen[label]) { seen[label] = true; out.push(label); }
+    });
+    return out;
+  };
+
   TableApp.prototype.openConfigDialog = function () {
     var payload = JSON.stringify({
       drillFields: this.fieldNamesFor(ENC.DRILL),
-      measureFields: this.fieldNamesFor(ENC.MEASURES)
+      measureFields: this.fieldNamesFor(ENC.MEASURES),
+      categoryValues: this.categoryValues()
     });
     var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
-    tableau.extensions.ui.displayDialogAsync(popupUrl, payload, { height: 780, width: 520 })
+    tableau.extensions.ui.displayDialogAsync(popupUrl, payload, { height: 900, width: 520 })
       .catch(function (error) {
         if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
         console.error(error);
@@ -1024,7 +1141,7 @@
         agg[role] = roleMap[role] ? aggregate(bucket.values[role], cfg.aggregation) : null;
       });
       bucket.agg = agg;
-      bucket.hib = inheritedHib !== undefined ? inheritedHib : resolveHib(bucket.polarityRaw, cfg);
+      bucket.hib = inheritedHib !== undefined ? inheritedHib : resolveCategoryHib(bucket, cfg);
       bucket.sortValue = bucket.sortValues.length ? Math.min.apply(null, bucket.sortValues) : null;
     }
 
@@ -1097,6 +1214,26 @@
       cols.push({ id: 'ytdVarPct', label: 'YTD Var', type: 'varPct', amount: 'ytdactual', comparison: 'ytdbudget' });
     }
     return cols;
+  }
+
+  // -------------------------------------------------------------------------
+  // Grand total: a polarity-signed sum across included categories (add
+  // higher-is-better, subtract lower-is-better), per base value column. The
+  // derived variances then use the same formulas as every other row.
+  // -------------------------------------------------------------------------
+  function buildGrandTotal(model, cfg) {
+    var agg = {};
+    VALUE_ROLES.forEach(function (role) { agg[role] = null; });
+    model.categories.forEach(function (cat) {
+      if (cfg.grandTotalExcludeSet[normName(cat.key)] || cfg.grandTotalExcludeSet[normName(cat.label)]) { return; }
+      var sign = cat.hib ? 1 : -1;
+      VALUE_ROLES.forEach(function (role) {
+        var v = cat.agg[role];
+        if (v === null || v === undefined || isNaN(v)) { return; }
+        agg[role] = (agg[role] === null ? 0 : agg[role]) + sign * v;
+      });
+    });
+    return { key: '__grand_total__', label: cfg.grandTotalLabel, agg: agg, hib: cfg.grandTotalHib };
   }
 
   // -------------------------------------------------------------------------
@@ -1250,6 +1387,21 @@
         });
       }
     });
+
+    if (cfg.showGrandTotal && model.categories.length > 0) {
+      var total = buildGrandTotal(model, cfg);
+      var ttr = document.createElement('tr');
+      ttr.className = 'grand-total';
+      var ttd = document.createElement('td');
+      ttd.className = 'line-item';
+      var tspacer = document.createElement('span');
+      tspacer.className = 'toggle-spacer';
+      ttd.appendChild(tspacer);
+      ttd.appendChild(document.createTextNode(total.label));
+      ttr.appendChild(ttd);
+      renderDataCells(ttr, total, columns, cfg);
+      tbody.appendChild(ttr);
+    }
   };
 
   TableApp.prototype.renderDrillSwitcher = function (cfg, drillField) {
@@ -1292,6 +1444,7 @@
   function DialogApp() {
     this.drillFields = [];
     this.measureFields = [];
+    this.categoryValues = [];
   }
 
   DialogApp.prototype.init = function () {
@@ -1301,11 +1454,16 @@
         var p = JSON.parse(payload || '{}');
         self.drillFields = p.drillFields || [];
         self.measureFields = p.measureFields || [];
+        self.categoryValues = p.categoryValues || [];
       } catch (e) { /* leave empty */ }
 
       var settings = tableau.extensions.settings.getAll();
       self.buildRoleRows(settings);
       self.buildDrillConfig(settings);
+      self.buildCategoryList('hib-cat-list', 'hib-cat-text-wrap', 'f-hib-cat-text',
+        parseNameList(getSetting(settings, 'hibCategories')));
+      self.buildCategoryList('excl-cat-list', 'excl-cat-text-wrap', 'f-excl-cat-text',
+        parseNameList(getSetting(settings, 'grandTotalExclude')));
       self.populateForm(settings);
 
       document.getElementById('btn-cancel').addEventListener('click', function () {
@@ -1363,6 +1521,55 @@
     });
   };
 
+  // A checkbox per category currently in the data (plus any saved names no
+  // longer present, so they survive a save). Falls back to a comma-separated
+  // text input when no category values are available.
+  DialogApp.prototype.buildCategoryList = function (listId, textWrapId, textId, savedList) {
+    var container = document.getElementById(listId);
+    var textWrap = document.getElementById(textWrapId);
+    container.innerHTML = '';
+
+    var values = this.categoryValues.slice();
+    var present = nameSet(values);
+    savedList.forEach(function (name) {
+      if (!present[normName(name)]) { values.push(name); present[normName(name)] = true; }
+    });
+
+    if (values.length === 0) {
+      container.classList.add('hidden');
+      textWrap.classList.remove('hidden');
+      document.getElementById(textId).value = savedList.join(', ');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    textWrap.classList.add('hidden');
+    var savedSet = nameSet(savedList);
+    values.forEach(function (name) {
+      var label = document.createElement('label');
+      label.className = 'check';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.setAttribute('data-name', name);
+      cb.checked = !!savedSet[normName(name)];
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(name));
+      container.appendChild(label);
+    });
+  };
+
+  DialogApp.prototype.readCategoryList = function (listId, textId) {
+    var container = document.getElementById(listId);
+    if (!container.classList.contains('hidden')) {
+      var out = [];
+      container.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        if (cb.checked) { out.push(cb.getAttribute('data-name')); }
+      });
+      return out;
+    }
+    return parseNameList(document.getElementById(textId).value);
+  };
+
   // Default-drill select plus a display-label input per drill field.
   DialogApp.prototype.buildDrillConfig = function (settings) {
     var defaultWrap = document.getElementById('f-default-drill-wrap');
@@ -1414,8 +1621,12 @@
     document.getElementById('f-default-expanded').checked = boolOf(val('defaultExpanded'));
     document.getElementById('f-persist-expanded').checked = boolOf(val('persistExpanded'));
 
-    document.getElementById('f-hib-default').checked = boolOf(val('hibDefault'));
+    document.getElementById('f-default-polarity').value = boolOf(val('hibDefault')) ? 'higher' : 'lower';
     document.getElementById('f-expense-value').value = val('expenseValue');
+
+    document.getElementById('f-show-total').checked = boolOf(val('showGrandTotal'));
+    document.getElementById('f-total-label').value = val('grandTotalLabel');
+    document.getElementById('f-total-polarity').value = boolOf(val('grandTotalHib')) ? 'higher' : 'lower';
 
     document.getElementById('f-scale').value = val('scale');
     document.getElementById('f-prefix').value = val('prefix');
@@ -1450,8 +1661,14 @@
       defaultExpanded: String(document.getElementById('f-default-expanded').checked),
       persistExpanded: String(document.getElementById('f-persist-expanded').checked),
 
-      hibDefault: String(document.getElementById('f-hib-default').checked),
+      hibDefault: String(document.getElementById('f-default-polarity').value === 'higher'),
+      hibCategories: JSON.stringify(this.readCategoryList('hib-cat-list', 'f-hib-cat-text')),
       expenseValue: document.getElementById('f-expense-value').value || 'Expense',
+
+      showGrandTotal: String(document.getElementById('f-show-total').checked),
+      grandTotalLabel: document.getElementById('f-total-label').value || 'Total',
+      grandTotalHib: String(document.getElementById('f-total-polarity').value === 'higher'),
+      grandTotalExclude: JSON.stringify(this.readCategoryList('excl-cat-list', 'f-excl-cat-text')),
 
       scale: document.getElementById('f-scale').value,
       prefix: document.getElementById('f-prefix').value,

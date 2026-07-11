@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
-  <worksheet-extension id="com.rgdofem.extensions.pnldrilltable" extension-version="1.0.0">
+  <worksheet-extension id="com.rgdofem.extensions.pnldrilltable" extension-version="1.1.0">
     <default-locale>en_US</default-locale>
     <name resource-id="name"/>
-    <description>An interactive P&amp;L table with expandable categories, derived budget/prior-year variances, and favorability-colored variance bubbles.</description>
+    <description>An interactive P&amp;L table with expandable categories, derived budget/prior-year variances, favorability-colored variance bubbles, settings-based polarity control, and an optional grand total row.</description>
     <author name="rgdofem" email="ryan.goodman@pinnacletreatment.com" organization="rgdofem" website="https://github.com/rgdofem/tableau-extens"/>
     <min-api-version>1.11</min-api-version>
     <source-location>
