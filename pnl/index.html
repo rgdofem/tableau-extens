@@ -308,6 +308,28 @@
     margin-bottom: 2px;
   }
 
+  #dialog .order-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+
+  #dialog .order-row .name {
+    flex: 1 1 auto;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #dialog .order-row button {
+    flex: 0 0 auto;
+    padding: 1px 8px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
   #dialog .col-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -428,6 +450,20 @@
     </div>
     <div class="field">
       <label class="check"><input type="checkbox" id="f-persist-expanded"> Remember expanded categories (persist in workbook)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Category order</legend>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-use-manual-order"> Use manual category order</label>
+    </div>
+    <div class="field">
+      <div id="cat-order-list" class="cat-list"></div>
+      <div id="cat-order-text-wrap" class="hidden">
+        <input type="text" id="f-cat-order-text" placeholder="Revenue, Direct Wages &amp; Benefits, SG&amp;A">
+      </div>
+      <div class="note">Arrange top-to-bottom with the arrows. When enabled, this overrides the Sort Order measure; categories not in the list keep their existing order below the listed ones. The grand total row always renders last.</div>
     </div>
   </fieldset>
 
@@ -605,6 +641,8 @@
     defaultDrillField: '',
     defaultExpanded: 'false',
     persistExpanded: 'false',
+    categoryOrderEnabled: 'false',
+    categoryOrder: '[]',
     hibDefault: 'false',
     hibCategories: '[]',
     expenseValue: 'Expense',
@@ -683,6 +721,15 @@
     return set;
   }
 
+  function nameIndex(list) {
+    var map = {};
+    list.forEach(function (n, i) {
+      var k = normName(n);
+      if (!(k in map)) { map[k] = i; }
+    });
+    return map;
+  }
+
   function readConfig(settings) {
     return {
       aggregation: getSetting(settings, 'aggregation'),
@@ -692,6 +739,8 @@
       defaultDrillField: getSetting(settings, 'defaultDrillField'),
       defaultExpanded: boolOf(getSetting(settings, 'defaultExpanded')),
       persistExpanded: boolOf(getSetting(settings, 'persistExpanded')),
+      categoryOrderEnabled: boolOf(getSetting(settings, 'categoryOrderEnabled')),
+      categoryOrderIndex: nameIndex(parseNameList(getSetting(settings, 'categoryOrder'))),
       hibDefault: boolOf(getSetting(settings, 'hibDefault')),
       hibCategorySet: nameSet(parseNameList(getSetting(settings, 'hibCategories'))),
       expenseValue: getSetting(settings, 'expenseValue'),
@@ -1163,6 +1212,22 @@
       });
     }
 
+    // Manual category order from settings wins over the Sort Order measure.
+    // Unlisted categories keep their existing order below the listed ones.
+    if (cfg.categoryOrderEnabled) {
+      var rank = function (c) {
+        var r = cfg.categoryOrderIndex[normName(c.key)];
+        if (r === undefined) { r = cfg.categoryOrderIndex[normName(c.label)]; }
+        return r === undefined ? Infinity : r;
+      };
+      categories.forEach(function (c, i) { c._i = i; });
+      categories.sort(function (a, b) {
+        var ar = rank(a);
+        var br = rank(b);
+        return ar === br ? a._i - b._i : ar - br;
+      });
+    }
+
     return {
       categories: categories,
       hasChildDim: !!childField,
@@ -1460,6 +1525,7 @@
       var settings = tableau.extensions.settings.getAll();
       self.buildRoleRows(settings);
       self.buildDrillConfig(settings);
+      self.buildOrderList(parseNameList(getSetting(settings, 'categoryOrder')));
       self.buildCategoryList('hib-cat-list', 'hib-cat-text-wrap', 'f-hib-cat-text',
         parseNameList(getSetting(settings, 'hibCategories')));
       self.buildCategoryList('excl-cat-list', 'excl-cat-text-wrap', 'f-excl-cat-text',
@@ -1558,6 +1624,77 @@
     });
   };
 
+  // An up/down-arrow row per category: the saved order first (including names
+  // no longer in the data), then any new categories in data order. Falls back
+  // to a comma-separated text input when no category values are available.
+  DialogApp.prototype.buildOrderList = function (savedOrder) {
+    var container = document.getElementById('cat-order-list');
+    var textWrap = document.getElementById('cat-order-text-wrap');
+    container.innerHTML = '';
+
+    var present = nameSet(this.categoryValues);
+    var values = savedOrder.filter(function (n) { return present[normName(n)]; });
+    savedOrder.forEach(function (n) {
+      if (!present[normName(n)]) { values.push(n); }
+    });
+    var listed = nameSet(values);
+    this.categoryValues.forEach(function (n) {
+      if (!listed[normName(n)]) { values.push(n); }
+    });
+
+    if (values.length === 0) {
+      container.classList.add('hidden');
+      textWrap.classList.remove('hidden');
+      document.getElementById('f-cat-order-text').value = savedOrder.join(', ');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    textWrap.classList.add('hidden');
+    values.forEach(function (name) {
+      var row = document.createElement('div');
+      row.className = 'order-row';
+      row.setAttribute('data-name', name);
+
+      var up = document.createElement('button');
+      up.type = 'button';
+      up.textContent = '↑';
+      up.title = 'Move up';
+      up.addEventListener('click', function () {
+        if (row.previousElementSibling) { container.insertBefore(row, row.previousElementSibling); }
+      });
+
+      var down = document.createElement('button');
+      down.type = 'button';
+      down.textContent = '↓';
+      down.title = 'Move down';
+      down.addEventListener('click', function () {
+        if (row.nextElementSibling) { container.insertBefore(row.nextElementSibling, row); }
+      });
+
+      var label = document.createElement('span');
+      label.className = 'name';
+      label.textContent = name;
+
+      row.appendChild(up);
+      row.appendChild(down);
+      row.appendChild(label);
+      container.appendChild(row);
+    });
+  };
+
+  DialogApp.prototype.readOrderList = function () {
+    var container = document.getElementById('cat-order-list');
+    if (!container.classList.contains('hidden')) {
+      var out = [];
+      container.querySelectorAll('.order-row').forEach(function (row) {
+        out.push(row.getAttribute('data-name'));
+      });
+      return out;
+    }
+    return parseNameList(document.getElementById('f-cat-order-text').value);
+  };
+
   DialogApp.prototype.readCategoryList = function (listId, textId) {
     var container = document.getElementById(listId);
     if (!container.classList.contains('hidden')) {
@@ -1621,6 +1758,8 @@
     document.getElementById('f-default-expanded').checked = boolOf(val('defaultExpanded'));
     document.getElementById('f-persist-expanded').checked = boolOf(val('persistExpanded'));
 
+    document.getElementById('f-use-manual-order').checked = boolOf(val('categoryOrderEnabled'));
+
     document.getElementById('f-default-polarity').value = boolOf(val('hibDefault')) ? 'higher' : 'lower';
     document.getElementById('f-expense-value').value = val('expenseValue');
 
@@ -1660,6 +1799,9 @@
 
       defaultExpanded: String(document.getElementById('f-default-expanded').checked),
       persistExpanded: String(document.getElementById('f-persist-expanded').checked),
+
+      categoryOrderEnabled: String(document.getElementById('f-use-manual-order').checked),
+      categoryOrder: JSON.stringify(this.readOrderList()),
 
       hibDefault: String(document.getElementById('f-default-polarity').value === 'higher'),
       hibCategories: JSON.stringify(this.readCategoryList('hib-cat-list', 'f-hib-cat-text')),
