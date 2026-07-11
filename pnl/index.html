@@ -509,6 +509,14 @@
       </div>
     </div>
     <div class="field">
+      <label for="f-total-mode">Total calculation</label>
+      <select id="f-total-mode">
+        <option value="signed">Polarity-signed sum (amounts stored positive)</option>
+        <option value="plain">Plain sum (expenses stored negative)</option>
+      </select>
+      <div class="note">Use "Plain sum" when your data already carries signs (revenue positive, expenses negative) — the values are simply added. Use "Polarity-signed sum" when all amounts are positive magnitudes — higher-is-better categories add and lower-is-better categories subtract.</div>
+    </div>
+    <div class="field">
       <label>Exclude categories from total</label>
       <div id="excl-cat-list" class="cat-list"></div>
       <div id="excl-cat-text-wrap" class="hidden">
@@ -649,6 +657,7 @@
     showGrandTotal: 'false',
     grandTotalLabel: 'Total',
     grandTotalHib: 'true',
+    grandTotalMode: 'signed',
     grandTotalExclude: '[]',
     scale: 'K',
     prefix: '$',
@@ -747,6 +756,7 @@
       showGrandTotal: boolOf(getSetting(settings, 'showGrandTotal')),
       grandTotalLabel: getSetting(settings, 'grandTotalLabel') || 'Total',
       grandTotalHib: boolOf(getSetting(settings, 'grandTotalHib')),
+      grandTotalMode: getSetting(settings, 'grandTotalMode'),
       grandTotalExcludeSet: nameSet(parseNameList(getSetting(settings, 'grandTotalExclude'))),
       scale: getSetting(settings, 'scale'),
       prefix: getSetting(settings, 'prefix'),
@@ -1282,16 +1292,18 @@
   }
 
   // -------------------------------------------------------------------------
-  // Grand total: a polarity-signed sum across included categories (add
-  // higher-is-better, subtract lower-is-better), per base value column. The
-  // derived variances then use the same formulas as every other row.
+  // Grand total, per base value column, across included categories. Two
+  // modes: 'signed' is a polarity-signed sum (add higher-is-better, subtract
+  // lower-is-better) for data stored as positive magnitudes; 'plain' simply
+  // adds the values for data that already carries signs (expenses negative).
+  // The derived variances then use the same formulas as every other row.
   // -------------------------------------------------------------------------
   function buildGrandTotal(model, cfg) {
     var agg = {};
     VALUE_ROLES.forEach(function (role) { agg[role] = null; });
     model.categories.forEach(function (cat) {
       if (cfg.grandTotalExcludeSet[normName(cat.key)] || cfg.grandTotalExcludeSet[normName(cat.label)]) { return; }
-      var sign = cat.hib ? 1 : -1;
+      var sign = (cfg.grandTotalMode === 'plain' || cat.hib) ? 1 : -1;
       VALUE_ROLES.forEach(function (role) {
         var v = cat.agg[role];
         if (v === null || v === undefined || isNaN(v)) { return; }
@@ -1766,6 +1778,7 @@
     document.getElementById('f-show-total').checked = boolOf(val('showGrandTotal'));
     document.getElementById('f-total-label').value = val('grandTotalLabel');
     document.getElementById('f-total-polarity').value = boolOf(val('grandTotalHib')) ? 'higher' : 'lower';
+    document.getElementById('f-total-mode').value = val('grandTotalMode') === 'plain' ? 'plain' : 'signed';
 
     document.getElementById('f-scale').value = val('scale');
     document.getElementById('f-prefix').value = val('prefix');
@@ -1810,6 +1823,7 @@
       showGrandTotal: String(document.getElementById('f-show-total').checked),
       grandTotalLabel: document.getElementById('f-total-label').value || 'Total',
       grandTotalHib: String(document.getElementById('f-total-polarity').value === 'higher'),
+      grandTotalMode: document.getElementById('f-total-mode').value,
       grandTotalExclude: JSON.stringify(this.readCategoryList('excl-cat-list', 'f-excl-cat-text')),
 
       scale: document.getElementById('f-scale').value,
