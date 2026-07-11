@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sparkline KPI Card</title>
+<style>
+  :root {
+    --label-color: #6B7280;
+    --border-color: #E5E7EB;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  #error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #E05A4E;
+    color: white;
+    font-size: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    z-index: 9999;
+    display: none;
+  }
+
+  .hidden { display: none !important; }
+
+  /* -------- Card view -------- */
+  #card-view {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 8px;
+  }
+
+  #card {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    background: #FFFFFF;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.10), 0 4px 12px rgba(16, 24, 40, 0.06);
+    padding: 16px 18px 14px 18px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #gear {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--label-color);
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s ease;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+
+  #gear:hover { opacity: 1; }
+
+  #empty-state {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--label-color);
+    font-size: 13px;
+  }
+
+  #content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #kpi-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--label-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 20px;
+  }
+
+  #kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1A1A1A;
+    line-height: 1.25;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #comparison-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    min-height: 20px;
+  }
+
+  #bubble {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #bubble-tri { font-size: 10px; }
+
+  #caption {
+    font-size: 12px;
+    color: var(--label-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #spark-wrap {
+    margin-top: auto;
+    padding-top: 10px;
+    width: 100%;
+    line-height: 0;
+  }
+
+  #spark-wrap svg { display: block; width: 100%; }
+
+  /* -------- Dialog view -------- */
+  #dialog-view {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #FFFFFF;
+  }
+
+  #dialog-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px 18px;
+  }
+
+  #dialog-view h1 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1A1A1A;
+    margin: 0 0 4px 0;
+  }
+
+  .section {
+    border-top: 1px solid var(--border-color);
+    padding: 10px 0 12px 0;
+    margin-top: 8px;
+  }
+
+  .section h2 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--label-color);
+    margin: 0 0 8px 0;
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+
+  .field-row label {
+    flex: 0 0 150px;
+    font-size: 12px;
+    color: #374151;
+  }
+
+  .field-row input[type="text"],
+  .field-row input[type="number"],
+  .field-row select {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    padding: 4px 6px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    background: #FFFFFF;
+    color: #1A1A1A;
+  }
+
+  .field-row input[type="color"] {
+    flex: 0 0 44px;
+    height: 24px;
+    padding: 0 2px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    background: #FFFFFF;
+  }
+
+  .field-row input[type="checkbox"] { flex: 0 0 auto; }
+
+  .color-grid {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 6px 10px;
+    align-items: center;
+  }
+
+  .color-grid label { font-size: 12px; color: #374151; }
+
+  #dialog-footer {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border-color);
+    background: #F9FAFB;
+  }
+
+  #dialog-footer button {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  #btn-cancel {
+    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    color: #374151;
+  }
+
+  #btn-save {
+    border: 1px solid #2563EB;
+    background: #2563EB;
+    color: #FFFFFF;
+  }
+</style>
+</head>
+<body>
+<div id="error-banner"></div>
+
+<div id="card-view" class="hidden">
+  <div id="card">
+    <button id="gear" title="Configure" aria-label="Configure">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+    <div id="empty-state" class="hidden">Add a measure to this card.</div>
+    <div id="content" class="hidden">
+      <div id="kpi-label"></div>
+      <div id="kpi-value"></div>
+      <div id="comparison-row">
+        <span id="bubble"><span id="bubble-tri"></span><span id="bubble-pct"></span></span>
+        <span id="caption"></span>
+      </div>
+      <div id="spark-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<div id="dialog-view" class="hidden">
+  <div id="dialog-body">
+    <h1>Sparkline KPI Card — Settings</h1>
+
+    <div class="section">
+      <h2>Headline</h2>
+      <div class="field-row">
+        <label for="f-agg">Aggregation</label>
+        <select id="f-agg">
+          <option value="latest">Latest (most recent Date)</option>
+          <option value="sum">Sum</option>
+          <option value="avg">Average</option>
+          <option value="min">Min</option>
+          <option value="max">Max</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="f-title">Title override</label>
+        <input type="text" id="f-title" placeholder="Blank = use field name">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Comparison</h2>
+      <div class="field-row">
+        <label for="f-comp-source">Comparison source</label>
+        <select id="f-comp-source">
+          <option value="measure">Comparison measure (tile)</option>
+          <option value="fixed">Fixed target number</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="f-fixed-target">Fixed target</label>
+        <input type="number" id="f-fixed-target" step="any" placeholder="e.g. 26712">
+      </div>
+      <div class="field-row">
+        <label for="f-hib">Higher is better</label>
+        <input type="checkbox" id="f-hib">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Value format</h2>
+      <div class="field-row">
+        <label for="f-prefix">Prefix</label>
+        <input type="text" id="f-prefix" placeholder="$">
+      </div>
+      <div class="field-row">
+        <label for="f-suffix">Suffix</label>
+        <input type="text" id="f-suffix" placeholder="e.g. K">
+      </div>
+      <div class="field-row">
+        <label for="f-scale">Scale</label>
+        <select id="f-scale">
+          <option value="none">None</option>
+          <option value="K">Thousands (K)</option>
+          <option value="M">Millions (M)</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="f-decimals">Decimals</label>
+        <input type="number" id="f-decimals" min="0" max="6" step="1">
+      </div>
+      <div class="field-row">
+        <label for="f-thousands">Thousands separator</label>
+        <input type="checkbox" id="f-thousands">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Caption</h2>
+      <div class="field-row">
+        <label for="f-cap-lead">Leading word</label>
+        <input type="text" id="f-cap-lead" placeholder="vs">
+      </div>
+      <div class="field-row">
+        <label for="f-cap-trail">Trailing word</label>
+        <input type="text" id="f-cap-trail" placeholder="Bdgt">
+      </div>
+      <div class="field-row">
+        <label for="f-cap-show-value">Show budget figure</label>
+        <input type="checkbox" id="f-cap-show-value">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Variance bubble</h2>
+      <div class="field-row">
+        <label for="f-bubble-show">Show bubble</label>
+        <input type="checkbox" id="f-bubble-show">
+      </div>
+      <div class="field-row">
+        <label for="f-bubble-decimals">Percent decimals</label>
+        <input type="number" id="f-bubble-decimals" min="0" max="4" step="1">
+      </div>
+      <div class="color-grid">
+        <label for="f-fav-bg">Favorable fill</label>
+        <input type="color" id="f-fav-bg">
+        <label for="f-fav-text">Favorable text</label>
+        <input type="color" id="f-fav-text">
+        <label for="f-unfav-bg">Unfavorable fill</label>
+        <input type="color" id="f-unfav-bg">
+        <label for="f-unfav-text">Unfavorable text</label>
+        <input type="color" id="f-unfav-text">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Sparkline</h2>
+      <div class="field-row">
+        <label for="f-spark-show">Show sparkline</label>
+        <input type="checkbox" id="f-spark-show">
+      </div>
+      <div class="field-row">
+        <label for="f-spark-line">Line color</label>
+        <input type="color" id="f-spark-line">
+      </div>
+      <div class="field-row">
+        <label for="f-spark-fill">Fill color</label>
+        <input type="color" id="f-spark-fill">
+      </div>
+      <div class="field-row">
+        <label for="f-spark-height">Height (px)</label>
+        <input type="number" id="f-spark-height" min="20" max="120" step="1">
+      </div>
+      <div class="field-row">
+        <label for="f-spark-dot">Last-point dot</label>
+        <input type="checkbox" id="f-spark-dot">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Card</h2>
+      <div class="field-row">
+        <label for="f-bg-color">Background color</label>
+        <input type="color" id="f-bg-color">
+      </div>
+      <div class="field-row">
+        <label for="f-text-color">Value text color</label>
+        <input type="color" id="f-text-color">
+      </div>
+    </div>
+  </div>
+  <div id="dialog-footer">
+    <button id="btn-cancel" type="button">Cancel</button>
+    <button id="btn-save" type="button">Save</button>
+  </div>
+</div>
+
+<script src="./tableau.extensions.1.latest.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Encoding ids from SparklineKPICard.trex
+  var ENC = { VALUE: 'value', COMPARISON: 'comparison', DATE: 'date' };
+
+  var DEFAULTS = {
+    agg: 'latest',
+    titleOverride: '',
+    compSource: 'measure',
+    fixedTarget: '',
+    higherIsBetter: 'true',
+    valPrefix: '$',
+    valSuffix: '',
+    valScale: 'none',
+    valDecimals: '0',
+    valThousands: 'true',
+    captionLead: 'vs',
+    captionTrail: 'Bdgt',
+    captionShowValue: 'true',
+    bubbleShow: 'true',
+    bubbleDecimals: '1',
+    favBg: '#DCF0DC',
+    favText: '#2E7D32',
+    unfavBg: '#FCE1DE',
+    unfavText: '#C62828',
+    sparkShow: 'true',
+    sparkLine: '#4A90D9',
+    sparkFill: '#D9E8F8',
+    sparkHeight: '44',
+    sparkDot: 'true',
+    bgColor: '#FFFFFF',
+    textColor: '#1A1A1A'
+  };
+
+  function showFatalError(msg) {
+    var banner = document.getElementById('error-banner');
+    if (!banner) { return; }
+    banner.textContent = msg;
+    banner.style.display = 'block';
+  }
+
+  if (typeof tableau === 'undefined') {
+    showFatalError('Failed to load the Tableau Extensions API library (tableau.extensions.1.latest.min.js). ' +
+      'Make sure the file is deployed alongside index.html.');
+    return;
+  }
+
+  var isDialog = window.location.search.indexOf('dialog=1') !== -1;
+
+  function getSetting(settings, key) {
+    var v = settings[key];
+    return (v === undefined || v === null) ? DEFAULTS[key] : v;
+  }
+
+  function boolOf(v) { return v === true || v === 'true'; }
+
+  function intOf(v, fallback) {
+    var n = parseInt(v, 10);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function readConfig(settings) {
+    return {
+      agg: getSetting(settings, 'agg'),
+      titleOverride: getSetting(settings, 'titleOverride'),
+      compSource: getSetting(settings, 'compSource'),
+      fixedTarget: getSetting(settings, 'fixedTarget'),
+      higherIsBetter: boolOf(getSetting(settings, 'higherIsBetter')),
+      valPrefix: getSetting(settings, 'valPrefix'),
+      valSuffix: getSetting(settings, 'valSuffix'),
+      valScale: getSetting(settings, 'valScale'),
+      valDecimals: intOf(getSetting(settings, 'valDecimals'), 0),
+      valThousands: boolOf(getSetting(settings, 'valThousands')),
+      captionLead: getSetting(settings, 'captionLead'),
+      captionTrail: getSetting(settings, 'captionTrail'),
+      captionShowValue: boolOf(getSetting(settings, 'captionShowValue')),
+      bubbleShow: boolOf(getSetting(settings, 'bubbleShow')),
+      bubbleDecimals: intOf(getSetting(settings, 'bubbleDecimals'), 1),
+      favBg: getSetting(settings, 'favBg'),
+      favText: getSetting(settings, 'favText'),
+      unfavBg: getSetting(settings, 'unfavBg'),
+      unfavText: getSetting(settings, 'unfavText'),
+      sparkShow: boolOf(getSetting(settings, 'sparkShow')),
+      sparkLine: getSetting(settings, 'sparkLine'),
+      sparkFill: getSetting(settings, 'sparkFill'),
+      sparkHeight: Math.max(20, Math.min(120, intOf(getSetting(settings, 'sparkHeight'), 44))),
+      sparkDot: boolOf(getSetting(settings, 'sparkDot')),
+      bgColor: getSetting(settings, 'bgColor'),
+      textColor: getSetting(settings, 'textColor')
+    };
+  }
+
+  function numOf(dataValue) {
+    if (!dataValue) { return NaN; }
+    var v = dataValue.value;
+    var n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : NaN;
+  }
+
+  // Formats a number with the configured prefix/suffix/scale/decimals/separator.
+  function formatValue(v, cfg) {
+    if (v === null || v === undefined || !isFinite(v)) { return '–'; }
+    var scaled = v;
+    var scaleSuffix = '';
+    if (cfg.valScale === 'K') { scaled = v / 1e3; scaleSuffix = 'K'; }
+    else if (cfg.valScale === 'M') { scaled = v / 1e6; scaleSuffix = 'M'; }
+    var neg = scaled < 0;
+    var s = Math.abs(scaled).toFixed(cfg.valDecimals);
+    if (cfg.valThousands) {
+      var parts = s.split('.');
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      s = parts.join('.');
+    }
+    return (neg ? '-' : '') + cfg.valPrefix + s + scaleSuffix + cfg.valSuffix;
+  }
+
+  // values must be in ascending date order; 'latest' = last element.
+  function aggregate(values, agg) {
+    if (!values || values.length === 0) { return null; }
+    var sum = values.reduce(function (a, b) { return a + b; }, 0);
+    switch (agg) {
+      case 'sum': return sum;
+      case 'avg': return sum / values.length;
+      case 'min': return Math.min.apply(null, values);
+      case 'max': return Math.max.apply(null, values);
+      case 'latest': return values[values.length - 1];
+      default: return sum;
+    }
+  }
+
+  // =========================================================================
+  // Card app
+  // =========================================================================
+  function CardApp() {
+    this.worksheet = null;
+    this.settings = {};
+    this.encodingMap = {};
+    this.rows = [];
+    this.lastSeries = null;   // kept so a window resize can redraw the sparkline
+    this.lastCfg = null;
+  }
+
+  CardApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeAsync({ configure: function () { self.openConfigDialog(); } }).then(function () {
+      self.worksheet = tableau.extensions.worksheetContent.worksheet;
+      self.settings = tableau.extensions.settings.getAll();
+
+      document.getElementById('card-view').classList.remove('hidden');
+      document.getElementById('gear').addEventListener('click', function () {
+        self.openConfigDialog();
+      });
+
+      self.worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () {
+        self.updateAndRender();
+      });
+
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, function (evt) {
+        self.settings = evt.newSettings;
+        self.render();
+      });
+
+      var redrawSpark = function () {
+        if (self.lastCfg) { self.renderSparkline(self.lastSeries, self.lastCfg); }
+      };
+      window.addEventListener('resize', redrawSpark);
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(redrawSpark).observe(document.getElementById('card'));
+      }
+
+      return self.updateAndRender();
+    }, function (err) {
+      showFatalError('Failed to initialize extension: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  CardApp.prototype.openConfigDialog = function () {
+    var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
+    tableau.extensions.ui.displayDialogAsync(popupUrl, '', { height: 780, width: 460 })
+      .catch(function (error) {
+        if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
+        console.error(error);
+      });
+  };
+
+  CardApp.prototype.getEncodingMap = function () {
+    return this.worksheet.getVisualSpecificationAsync().then(function (visualSpec) {
+      var map = {};
+      if (visualSpec.activeMarksSpecificationIndex < 0) { return map; }
+      var marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+      marksCard.encodings.forEach(function (encoding) {
+        if (!map[encoding.id]) { map[encoding.id] = []; }
+        map[encoding.id].push(encoding.field);
+      });
+      return map;
+    });
+  };
+
+  CardApp.prototype.getSummaryRows = function () {
+    return this.worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true }).then(function (reader) {
+      var pageCount = reader.pageCount;
+      var chain = Promise.resolve();
+      var pages = [];
+      for (var i = 0; i < pageCount; i++) {
+        (function (pageIndex) {
+          chain = chain.then(function () {
+            return reader.getPageAsync(pageIndex).then(function (page) { pages.push(page); });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        return reader.releaseAsync().then(function () { return pages; });
+      });
+    }).then(function (pages) {
+      var rows = [];
+      pages.forEach(function (page) {
+        var columns = page.columns;
+        for (var i = 0; i < page.data.length; i++) {
+          var row = {};
+          for (var j = 0; j < columns.length; j++) {
+            row[columns[j].fieldName] = page.data[i][columns[j].index];
+          }
+          rows.push(row);
+        }
+      });
+      return rows;
+    });
+  };
+
+  CardApp.prototype.updateAndRender = function () {
+    var self = this;
+    return Promise.all([self.getEncodingMap(), self.getSummaryRows()]).then(function (results) {
+      self.encodingMap = results[0];
+      self.rows = results[1];
+      self.render();
+    }).catch(function (err) {
+      showFatalError('Failed to read worksheet data: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  CardApp.prototype.fieldNameFor = function (encodingId) {
+    var fields = this.encodingMap[encodingId] || [];
+    return fields.length > 0 ? fields[0].name : null;
+  };
+
+  function isNullValue(dv) {
+    return !dv || dv.value === null || dv.value === undefined || String(dv.value) === '%null%';
+  }
+
+  function dateSortKey(raw) {
+    var s = String(raw);
+    var t = Date.parse(s);
+    if (isNaN(t)) { t = Date.parse(s.replace(' ', 'T')); }
+    return isNaN(t) ? null : t;
+  }
+
+  // Groups rows by the Date field (summing within each period) and returns
+  // {value: [...], comp: [...]} arrays in ascending date order. Without a
+  // Date field the arrays hold a single total.
+  CardApp.prototype.buildSeries = function () {
+    var valueField = this.fieldNameFor(ENC.VALUE);
+    var compField = this.fieldNameFor(ENC.COMPARISON);
+    var dateField = this.fieldNameFor(ENC.DATE);
+
+    if (!valueField) { return null; }
+
+    if (!dateField) {
+      var vTotal = 0, cTotal = 0, vAny = false, cAny = false;
+      this.rows.forEach(function (row) {
+        var v = numOf(row[valueField]);
+        if (!isNaN(v)) { vTotal += v; vAny = true; }
+        if (compField) {
+          var c = numOf(row[compField]);
+          if (!isNaN(c)) { cTotal += c; cAny = true; }
+        }
+      });
+      return {
+        hasDate: false,
+        value: vAny ? [vTotal] : [],
+        comp: cAny ? [cTotal] : []
+      };
+    }
+
+    var buckets = {};
+    var order = [];
+    this.rows.forEach(function (row) {
+      var dv = row[dateField];
+      if (isNullValue(dv)) { return; }
+      var key = String(dv.value);
+      if (!buckets[key]) {
+        buckets[key] = { sortKey: dateSortKey(dv.value), value: 0, vAny: false, comp: 0, cAny: false };
+        order.push(key);
+      }
+      var b = buckets[key];
+      var v = numOf(row[valueField]);
+      if (!isNaN(v)) { b.value += v; b.vAny = true; }
+      if (compField) {
+        var c = numOf(row[compField]);
+        if (!isNaN(c)) { b.comp += c; b.cAny = true; }
+      }
+    });
+
+    order.sort(function (a, b) {
+      var ka = buckets[a].sortKey, kb = buckets[b].sortKey;
+      if (ka !== null && kb !== null) { return ka - kb; }
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+
+    var value = [], comp = [];
+    order.forEach(function (key) {
+      var b = buckets[key];
+      if (b.vAny) {
+        value.push(b.value);
+        comp.push(b.cAny ? b.comp : NaN);
+      }
+    });
+    return {
+      hasDate: true,
+      value: value,
+      comp: comp.filter(function (c) { return !isNaN(c); }).length === comp.length ? comp : comp.filter(function (c) { return !isNaN(c); })
+    };
+  };
+
+  CardApp.prototype.render = function () {
+    var cfg = readConfig(this.settings);
+    var card = document.getElementById('card');
+    var emptyEl = document.getElementById('empty-state');
+    var contentEl = document.getElementById('content');
+
+    card.style.background = cfg.bgColor;
+
+    var valueField = this.fieldNameFor(ENC.VALUE);
+    var compField = this.fieldNameFor(ENC.COMPARISON);
+    var series = this.buildSeries();
+
+    if (!valueField || !series || series.value.length === 0) {
+      emptyEl.classList.remove('hidden');
+      contentEl.classList.add('hidden');
+      this.lastSeries = null;
+      this.lastCfg = null;
+      return;
+    }
+    emptyEl.classList.add('hidden');
+    contentEl.classList.remove('hidden');
+
+    // Headline: 'latest' needs a Date; without one it degrades to sum.
+    var effAgg = cfg.agg;
+    if (effAgg === 'latest' && !series.hasDate) { effAgg = 'sum'; }
+    var value = aggregate(series.value, effAgg);
+
+    // Comparison: mapped measure (same aggregation) or fixed target.
+    var comparison = null;
+    if (cfg.compSource === 'fixed') {
+      var t = parseFloat(cfg.fixedTarget);
+      if (isFinite(t)) { comparison = t; }
+    } else if (compField && series.comp.length > 0) {
+      comparison = aggregate(series.comp, effAgg);
+    }
+
+    document.getElementById('kpi-label').textContent = cfg.titleOverride || valueField;
+    var valueEl = document.getElementById('kpi-value');
+    valueEl.textContent = formatValue(value, cfg);
+    valueEl.style.color = cfg.textColor;
+
+    // Comparison row (bubble + caption)
+    var rowEl = document.getElementById('comparison-row');
+    var bubbleEl = document.getElementById('bubble');
+    var captionEl = document.getElementById('caption');
+    var hasComparison = comparison !== null && isFinite(comparison) && value !== null && isFinite(value);
+
+    if (!hasComparison) {
+      rowEl.style.display = 'none';
+    } else {
+      rowEl.style.display = 'flex';
+
+      var rawDelta = value - comparison;
+      var favorable = (rawDelta >= 0) === cfg.higherIsBetter;
+      var pct = comparison !== 0 ? Math.abs(rawDelta / comparison) * 100 : null;
+
+      if (cfg.bubbleShow) {
+        bubbleEl.style.display = 'inline-flex';
+        bubbleEl.style.background = favorable ? cfg.favBg : cfg.unfavBg;
+        bubbleEl.style.color = favorable ? cfg.favText : cfg.unfavText;
+        document.getElementById('bubble-tri').textContent = rawDelta >= 0 ? '▲' : '▼';
+        document.getElementById('bubble-pct').textContent =
+          pct === null ? '–' : pct.toFixed(cfg.bubbleDecimals) + '%';
+      } else {
+        bubbleEl.style.display = 'none';
+      }
+
+      var capParts = [];
+      if (cfg.captionLead) { capParts.push(cfg.captionLead); }
+      if (cfg.captionShowValue) { capParts.push(formatValue(comparison, cfg)); }
+      if (cfg.captionTrail) { capParts.push(cfg.captionTrail); }
+      captionEl.textContent = capParts.join(' ');
+      captionEl.style.display = capParts.length > 0 ? 'inline' : 'none';
+    }
+
+    // Sparkline: needs a Date axis and at least two points to show a shape.
+    var sparkSeries = (cfg.sparkShow && series.hasDate && series.value.length >= 2) ? series.value : null;
+    this.lastSeries = sparkSeries;
+    this.lastCfg = cfg;
+    this.renderSparkline(sparkSeries, cfg);
+  };
+
+  CardApp.prototype.renderSparkline = function (series, cfg) {
+    var wrap = document.getElementById('spark-wrap');
+    if (!series) {
+      wrap.innerHTML = '';
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'block';
+
+    var W = Math.max(60, wrap.clientWidth || 260);
+    var H = cfg.sparkHeight;
+    var dotR = cfg.sparkDot ? 3 : 0;
+    var padX = dotR + 1;
+    var padTop = dotR + 2;
+    var padBottom = 2;
+
+    var min = Math.min.apply(null, series);
+    var max = Math.max.apply(null, series);
+    var span = max - min;
+
+    var n = series.length;
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var x = padX + (W - 2 * padX) * (n === 1 ? 0.5 : i / (n - 1));
+      var y = span === 0
+        ? H / 2
+        : padTop + (H - padTop - padBottom) * (1 - (series[i] - min) / span);
+      pts.push([x, y]);
+    }
+
+    var line = '';
+    pts.forEach(function (p, idx) {
+      line += (idx === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1);
+    });
+    var area = line +
+      'L' + pts[n - 1][0].toFixed(1) + ' ' + (H - padBottom) +
+      'L' + pts[0][0].toFixed(1) + ' ' + (H - padBottom) + 'Z';
+
+    var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
+      'preserveAspectRatio="none" role="img" aria-label="trend sparkline">' +
+      '<path d="' + area + '" fill="' + cfg.sparkFill + '" stroke="none"></path>' +
+      '<path d="' + line + '" fill="none" stroke="' + cfg.sparkLine + '" stroke-width="1.8" ' +
+      'stroke-linecap="round" stroke-linejoin="round"></path>';
+    if (cfg.sparkDot) {
+      svg += '<circle cx="' + pts[n - 1][0].toFixed(1) + '" cy="' + pts[n - 1][1].toFixed(1) +
+        '" r="' + dotR + '" fill="' + cfg.sparkLine + '"></circle>';
+    }
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+  };
+
+  // =========================================================================
+  // Dialog
+  // =========================================================================
+  function DialogApp() {}
+
+  DialogApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeDialogAsync().then(function () {
+      document.getElementById('dialog-view').classList.remove('hidden');
+      self.populateForm(tableau.extensions.settings.getAll());
+
+      document.getElementById('btn-cancel').addEventListener('click', function () {
+        tableau.extensions.ui.closeDialog('cancel');
+      });
+      document.getElementById('btn-save').addEventListener('click', function () {
+        self.save();
+      });
+    }, function (err) {
+      showFatalError('Failed to initialize settings dialog: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DialogApp.prototype.populateForm = function (settings) {
+    document.getElementById('f-agg').value = getSetting(settings, 'agg');
+    document.getElementById('f-title').value = getSetting(settings, 'titleOverride');
+    document.getElementById('f-comp-source').value = getSetting(settings, 'compSource');
+    document.getElementById('f-fixed-target').value = getSetting(settings, 'fixedTarget');
+    document.getElementById('f-hib').checked = boolOf(getSetting(settings, 'higherIsBetter'));
+    document.getElementById('f-prefix').value = getSetting(settings, 'valPrefix');
+    document.getElementById('f-suffix').value = getSetting(settings, 'valSuffix');
+    document.getElementById('f-scale').value = getSetting(settings, 'valScale');
+    document.getElementById('f-decimals').value = getSetting(settings, 'valDecimals');
+    document.getElementById('f-thousands').checked = boolOf(getSetting(settings, 'valThousands'));
+    document.getElementById('f-cap-lead').value = getSetting(settings, 'captionLead');
+    document.getElementById('f-cap-trail').value = getSetting(settings, 'captionTrail');
+    document.getElementById('f-cap-show-value').checked = boolOf(getSetting(settings, 'captionShowValue'));
+    document.getElementById('f-bubble-show').checked = boolOf(getSetting(settings, 'bubbleShow'));
+    document.getElementById('f-bubble-decimals').value = getSetting(settings, 'bubbleDecimals');
+    document.getElementById('f-fav-bg').value = getSetting(settings, 'favBg');
+    document.getElementById('f-fav-text').value = getSetting(settings, 'favText');
+    document.getElementById('f-unfav-bg').value = getSetting(settings, 'unfavBg');
+    document.getElementById('f-unfav-text').value = getSetting(settings, 'unfavText');
+    document.getElementById('f-spark-show').checked = boolOf(getSetting(settings, 'sparkShow'));
+    document.getElementById('f-spark-line').value = getSetting(settings, 'sparkLine');
+    document.getElementById('f-spark-fill').value = getSetting(settings, 'sparkFill');
+    document.getElementById('f-spark-height').value = getSetting(settings, 'sparkHeight');
+    document.getElementById('f-spark-dot').checked = boolOf(getSetting(settings, 'sparkDot'));
+    document.getElementById('f-bg-color').value = getSetting(settings, 'bgColor');
+    document.getElementById('f-text-color').value = getSetting(settings, 'textColor');
+  };
+
+  DialogApp.prototype.save = function () {
+    var values = {
+      agg: document.getElementById('f-agg').value,
+      titleOverride: document.getElementById('f-title').value,
+      compSource: document.getElementById('f-comp-source').value,
+      fixedTarget: document.getElementById('f-fixed-target').value,
+      higherIsBetter: String(document.getElementById('f-hib').checked),
+      valPrefix: document.getElementById('f-prefix').value,
+      valSuffix: document.getElementById('f-suffix').value,
+      valScale: document.getElementById('f-scale').value,
+      valDecimals: document.getElementById('f-decimals').value,
+      valThousands: String(document.getElementById('f-thousands').checked),
+      captionLead: document.getElementById('f-cap-lead').value,
+      captionTrail: document.getElementById('f-cap-trail').value,
+      captionShowValue: String(document.getElementById('f-cap-show-value').checked),
+      bubbleShow: String(document.getElementById('f-bubble-show').checked),
+      bubbleDecimals: document.getElementById('f-bubble-decimals').value,
+      favBg: document.getElementById('f-fav-bg').value,
+      favText: document.getElementById('f-fav-text').value,
+      unfavBg: document.getElementById('f-unfav-bg').value,
+      unfavText: document.getElementById('f-unfav-text').value,
+      sparkShow: String(document.getElementById('f-spark-show').checked),
+      sparkLine: document.getElementById('f-spark-line').value,
+      sparkFill: document.getElementById('f-spark-fill').value,
+      sparkHeight: document.getElementById('f-spark-height').value,
+      sparkDot: String(document.getElementById('f-spark-dot').checked),
+      bgColor: document.getElementById('f-bg-color').value,
+      textColor: document.getElementById('f-text-color').value
+    };
+    Object.keys(values).forEach(function (key) {
+      tableau.extensions.settings.set(key, values[key]);
+    });
+    tableau.extensions.settings.saveAsync().then(function () {
+      tableau.extensions.ui.closeDialog('saved');
+    }, function (err) {
+      showFatalError('Failed to save settings: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  // =========================================================================
+  // Boot
+  // =========================================================================
+  if (isDialog) {
+    new DialogApp().init();
+  } else {
+    new CardApp().init();
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.rgdofem.extensions.sparklinekpicard" extension-version="1.0.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>A KPI card with a headline value, a favorable/unfavorable variance bubble against a budget comparison, a configurable caption, and a trend sparkline.</description>
+    <author name="rgdofem" email="ryan.goodman@pinnacletreatment.com" organization="rgdofem" website="https://github.com/rgdofem/tableau-extens"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://rgdofem.github.io/tableau-extens/spark-kpi/index.html</url>
+    </source-location>
+    <icon>iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAH8SURBVFhH7ZXLSwJRFMb7i4KCoG2roE0hRFDtiiCoRS2DiNoWPbC39CARMiiicJFhDyED7UVPMzXLTLPUnF5OZifOjTvZjGNTTdPGA99izvXy/e4934xZ8M+VxW8oXRkAxQFs7g2iWJwlz4oBoGHVaA1kN+cSFfeogHlilAMwHS5z5lRai045gNmtOQHAiHlUOYDpTTfktBRw5nmt+WC/tCsD4A2zUNLrgMJOK5QPdUD/0iAxx5INYPHgFgLRZ34b2JdXaNSfQ1H3MVRqXOC5eU8/LVkAepeuiAGecmztmpjSwmdcQxn2IhBk4p/2/hrgyP/IGVBVaFxgcd7BrveB63UZA7Dve5QXAE9ap/MQgwb9GbQv+KFY7RAA1Wo9xFx2gClbiBigqdnBEINle5TAUHNV38fatwHwhCvHTMpwYQ9njiZq0/v1JmvSGoJ63RnM7YQ/9b8F0Dx7QQxShYuuVY+7Ydv7IAAQk2SA4dWgYJY0XHgrtIfJ5pukkyQAw26EM8D0ioWrbd4nMPhKXwLgq0Nn2zTj5Tbyw1U25IQNj/SrlwSAwSodOCEG+Oqkmq1YuKRKFOA+loCaiVNijp/MddedYLMcEgWgc8dZGw+igo1ySRQA/7EwVD+9WqkSBcDCRf4GuZUBSAtwzybID/5S6JFcgg+R0pUB+HeAN5LPEm4fl/zqAAAAAElFTkSuQmCC</icon>
+    <encoding id="value">
+      <display-name resource-id="enc-value">Value</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="dollar"/>
+      <tooltip resource-id="tt-value">The KPI measure. Drives the headline value and the sparkline series. Required.</tooltip>
+    </encoding>
+    <encoding id="comparison">
+      <display-name resource-id="enc-comparison">Comparison</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="metric"/>
+      <tooltip resource-id="tt-comparison">Optional budget/target measure for the variance bubble and caption. If not mapped, a fixed target can be set in the settings dialog.</tooltip>
+    </encoding>
+    <encoding id="date">
+      <display-name resource-id="enc-date">Date</display-name>
+      <data-spec>
+        <data-type>temporal</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+        <role-type>continuous-dimension</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="forecast"/>
+      <tooltip resource-id="tt-date">Optional date dimension. Provides the sparkline x-axis and the basis for the "latest" headline aggregation.</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Sparkline KPI Card</text>
+    </resource>
+    <resource id="enc-value">
+      <text locale="en_US">Value</text>
+    </resource>
+    <resource id="enc-comparison">
+      <text locale="en_US">Comparison</text>
+    </resource>
+    <resource id="enc-date">
+      <text locale="en_US">Date</text>
+    </resource>
+    <resource id="tt-value">
+      <text locale="en_US">The KPI measure. Drives the headline value and the sparkline series. Required.</text>
+    </resource>
+    <resource id="tt-comparison">
+      <text locale="en_US">Optional budget/target measure for the variance bubble and caption. If not mapped, a fixed target can be set in the settings dialog.</text>
+    </resource>
+    <resource id="tt-date">
+      <text locale="en_US">Optional date dimension. Provides the sparkline x-axis and the basis for the "latest" headline aggregation.</text>
+    </resource>
+  </resources>
+</manifest>
