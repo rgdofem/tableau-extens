@@ -58,6 +58,15 @@
     overflow: hidden;
   }
 
+  /* Transparent mode: no card chrome, so the sheet can sit on a dashboard
+     background image (e.g. a Figma frame) that draws its own card shape. */
+  #card-view.transparent { padding: 0; }
+  #card-view.transparent #card {
+    background: transparent !important;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   #gear {
     position: absolute;
     top: 10px;
@@ -429,6 +438,10 @@
     <div class="section">
       <h2>Card</h2>
       <div class="field-row">
+        <label for="f-transparent">Transparent background</label>
+        <input type="checkbox" id="f-transparent">
+      </div>
+      <div class="field-row">
         <label for="f-bg-color">Background color</label>
         <input type="color" id="f-bg-color">
       </div>
@@ -477,6 +490,7 @@
     sparkFill: '#D9E8F8',
     sparkHeight: '44',
     sparkDot: 'true',
+    transparentBg: 'false',
     bgColor: '#FFFFFF',
     textColor: '#1A1A1A'
   };
@@ -534,6 +548,7 @@
       sparkFill: getSetting(settings, 'sparkFill'),
       sparkHeight: Math.max(20, Math.min(120, intOf(getSetting(settings, 'sparkHeight'), 44))),
       sparkDot: boolOf(getSetting(settings, 'sparkDot')),
+      transparentBg: boolOf(getSetting(settings, 'transparentBg')),
       bgColor: getSetting(settings, 'bgColor'),
       textColor: getSetting(settings, 'textColor')
     };
@@ -776,7 +791,8 @@
     var emptyEl = document.getElementById('empty-state');
     var contentEl = document.getElementById('content');
 
-    card.style.background = cfg.bgColor;
+    document.getElementById('card-view').classList.toggle('transparent', cfg.transparentBg);
+    card.style.background = cfg.transparentBg ? '' : cfg.bgColor;
 
     var valueField = this.fieldNameFor(ENC.VALUE);
     var compField = this.fieldNameFor(ENC.COMPARISON);
@@ -950,6 +966,7 @@
     document.getElementById('f-spark-fill').value = getSetting(settings, 'sparkFill');
     document.getElementById('f-spark-height').value = getSetting(settings, 'sparkHeight');
     document.getElementById('f-spark-dot').checked = boolOf(getSetting(settings, 'sparkDot'));
+    document.getElementById('f-transparent').checked = boolOf(getSetting(settings, 'transparentBg'));
     document.getElementById('f-bg-color').value = getSetting(settings, 'bgColor');
     document.getElementById('f-text-color').value = getSetting(settings, 'textColor');
   };
@@ -980,6 +997,7 @@
       sparkFill: document.getElementById('f-spark-fill').value,
       sparkHeight: document.getElementById('f-spark-height').value,
       sparkDot: String(document.getElementById('f-spark-dot').checked),
+      transparentBg: String(document.getElementById('f-transparent').checked),
       bgColor: document.getElementById('f-bg-color').value,
       textColor: document.getElementById('f-text-color').value
     };

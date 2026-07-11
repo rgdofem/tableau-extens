@@ -26,6 +26,22 @@ configurable caption (`vs $26,712K Bdgt`), and a trend sparkline.
    (prefix/suffix/scale/decimals), caption words, bubble colors, sparkline
    styling, and card colors.
 
+## Transparent mode (over a background image)
+
+To float the card over a dashboard background image (e.g. a Figma frame that
+draws its own card shape):
+
+1. Gear icon → **Card → Transparent background**. This removes the white
+   fill, rounded corners, drop shadow, and outer padding — only the text and
+   sparkline remain.
+2. On the worksheet: **Format → Shading → Worksheet → None** (also set Pane
+   and Header to None if present).
+3. On the dashboard: select the sheet's zone, **Layout pane → Background →
+   None**.
+
+The gray you see behind the card without steps 2–3 is Tableau's own
+worksheet/zone shading, not the extension's.
+
 ## Behavior notes
 
 - Headline aggregation options: sum / avg / min / max / **latest** (default;
