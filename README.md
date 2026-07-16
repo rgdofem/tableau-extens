@@ -158,3 +158,100 @@ step is needed.
   comparison, independent of color — so an expense line under budget shows a green ▼.
 - The **Drill by** switcher re-groups the same rows by the other child dimension entirely
   client-side; switching collapses all categories.
+
+---
+
+# Census Facility Dashboard
+
+A whole-tab Tableau **viz extension** in `census-facility/`: the facility census view in a single
+worksheet. Plain HTML/CSS/JS in one `index.html`, no build step.
+
+## Hosted URL
+
+```
+https://rgdofem.github.io/tableau-extens/census-facility/index.html
+```
+
+## What it renders
+
+- **KPI row** — Day (latest date), MTD, and YTD cards. Each shows the census figure, a
+  red/green budget variance line (`(966) ▼ below 35,028 budget` + `(3%) unfavorable`), and a
+  **prior-year comparison line** (`vs PY 33,096 ▲ 2.9%`), also favorability-colored.
+- **Breakdown panels** — one chart per dimension on the Breakdowns tile (Phase, ALOS bucket,
+  Drug Type, Payor, Modality, …), snapshotted at the latest date. Per panel you choose chart
+  type (horizontal bars / columns / pie / donut), order (↑/↓ arrows), grid width, Top N, and
+  sort — so *you* decide which dimension goes where.
+- **Trend panel** — daily total actual line with a light budget area, or split into one line
+  per member of a chosen dimension, capped at Top-N lines by current census so the all-sites
+  view stays readable (the messy-spaghetti fix). Date window: all / YTD / trailing 12 / 24 months.
+
+## Worksheet setup
+
+Data must be at **Date × breakdown-dimension grain** (daily). Tiles (max 4 per the manifest
+schema, so measures share one):
+
+| Tile | Fields (max) | Required |
+|------|--------------|----------|
+| **Date** | The daily census date, exact day grain (1) | Yes |
+| **Measures** | Census, Budget, Prior Year (4) | Census only |
+| **Breakdowns** | Up to six dimensions to break census out by (6) | No |
+
+Measure roles are auto-detected from names (budget/plan/target → Budget; PY/prior/last year →
+Prior Year) and can be reassigned in the settings dialog.
+
+## MTD / YTD / prior-year windows
+
+The extension computes the windows itself from the Date field: Day = latest date with data,
+MTD = that date's month-to-date, YTD = year-to-date. MTD/YTD aggregation is configurable —
+ADC (average of daily totals, the default), Sum, or Latest day. Budget aggregates the same way.
+**Prior year**: if a Prior Year measure is mapped it is aggregated over the *same* window;
+otherwise PY is derived from the Date history (same window shifted one year back) — so keep at
+least last year's dates in the worksheet (a relative date filter of ~2 years works well, and
+also keeps the summary-data volume down at fine dimensional grain).
+
+---
+
+# Census Regional Dashboard
+
+The corporate/regional counterpart in `census-regional/`: same KPI engine plus a variance chart,
+an actual-vs-budget trend, and a multi-measure site crosstab.
+
+## Hosted URL
+
+```
+https://rgdofem.github.io/tableau-extens/census-regional/index.html
+```
+
+## What it renders
+
+- **KPI row** — identical Day/MTD/YTD cards with budget variance and prior-year lines.
+- **Variance chart** — diverging red/green bars of actual − budget at the latest date, grouped
+  by a Rows dimension (default the first, e.g. Region), sortable A→Z / worst-first / best-first.
+- **Trend chart** — daily total census line over a light budget area, with the same date-window
+  options as the facility trend.
+- **Crosstab** — one row per dimension tuple (Region / Location / Program) at the latest date:
+  Census, Budget, favorability-colored Variance (and optional Var %), then **every measure not
+  assigned a role as an extra column** — payor mix %, ALOS, whatever you drop on the tile.
+  Percent-looking fields format automatically (0–1 ratios are scaled to %); overrides per field
+  in settings. Every column header is click-sortable; the default sort and an optional totals
+  row are configurable.
+
+## Worksheet setup
+
+Data at **Date × site grain** (daily):
+
+| Tile | Fields (max) | Required |
+|------|--------------|----------|
+| **Date** | The daily census date, exact day grain (1) | Yes |
+| **Rows** | Crosstab row dimensions in display order, e.g. Region, Location, Program (3) | For chart/crosstab |
+| **Measures** | Census, Budget, Prior Year + any extra crosstab measures (12) | Census only |
+
+The prior-year note from the facility extension applies here too — map a PY measure or keep last
+year's dates in the worksheet.
+
+## Testing either extension outside Tableau
+
+Copy the extension's `index.html` into a scratch folder next to a mock file named
+`tableau.extensions.1.latest.min.js` that stubs `initializeAsync`, `worksheetContent`,
+`settings`, and `ui`, then serve the folder with any static server. Both dashboards render
+fully from the mocked summary data; `?dialog=1` loads the settings dialog the same way.

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.rgdofem.extensions.censusfacilitydashboard" extension-version="1.0.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>A facility census dashboard: Day/MTD/YTD KPI cards with budget variance and prior-year comparison, a configurable grid of dimension breakdown charts (bars, columns, pie, donut), and an ADC trend panel with optional dimension split.</description>
+    <author name="rgdofem" email="ryan.goodman@pinnacletreatment.com" organization="rgdofem" website="https://github.com/rgdofem/tableau-extens"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://rgdofem.github.io/tableau-extens/census-facility/index.html</url>
+    </source-location>
+    <icon>iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABsSURBVFhH7dShDcAgFEVRxkFV1KA7QgdivW7SIDpE6y95JDUfxLvJM6iT/IT0Ti7xIbp1AHd7QmeAAesBZmVAByjH+Wtsq/twzIAOEJ0BEsBbq7Er5+GYARIQlQESwFurMf58HDNAAqIywIAPwDNbu4wyxI8AAAAASUVORK5CYII=</icon>
+    <encoding id="date">
+      <display-name resource-id="enc-date">Date</display-name>
+      <data-spec>
+        <data-type>temporal</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+        <role-type>continuous-dimension</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="forecast"/>
+      <tooltip resource-id="tt-date">The daily census date. Required — drives the Day/MTD/YTD KPI windows, the prior-year comparison, and the trend panel. Use exact day grain.</tooltip>
+    </encoding>
+    <encoding id="measures">
+      <display-name resource-id="enc-measures">Measures</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="4"/>
+      <encoding-icon token="metric"/>
+      <tooltip resource-id="tt-measures">Census (required), Budget, and optionally a Prior Year measure. Roles are auto-detected from field names and can be reassigned in the settings dialog. Without a Prior Year measure, PY is derived from the Date history.</tooltip>
+    </encoding>
+    <encoding id="breakdowns">
+      <display-name resource-id="enc-breakdowns">Breakdowns</display-name>
+      <data-spec>
+        <data-type>string</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+      </role-spec>
+      <fields max-count="6"/>
+      <encoding-icon token="level"/>
+      <tooltip resource-id="tt-breakdowns">Up to six dimensions to break census out by (Phase, ALOS bucket, Drug Type, Payor, Modality, …). Each gets a chart panel — arrange order, chart type, and sizing in the settings dialog.</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Census Facility Dashboard</text>
+    </resource>
+    <resource id="enc-date">
+      <text locale="en_US">Date</text>
+    </resource>
+    <resource id="enc-measures">
+      <text locale="en_US">Measures</text>
+    </resource>
+    <resource id="enc-breakdowns">
+      <text locale="en_US">Breakdowns</text>
+    </resource>
+    <resource id="tt-date">
+      <text locale="en_US">The daily census date. Required — drives the Day/MTD/YTD KPI windows, the prior-year comparison, and the trend panel. Use exact day grain.</text>
+    </resource>
+    <resource id="tt-measures">
+      <text locale="en_US">Census (required), Budget, and optionally a Prior Year measure. Roles are auto-detected from field names and can be reassigned in the settings dialog. Without a Prior Year measure, PY is derived from the Date history.</text>
+    </resource>
+    <resource id="tt-breakdowns">
+      <text locale="en_US">Up to six dimensions to break census out by (Phase, ALOS bucket, Drug Type, Payor, Modality, …). Each gets a chart panel — arrange order, chart type, and sizing in the settings dialog.</text>
+    </resource>
+  </resources>
+</manifest>

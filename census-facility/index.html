@@ -1,0 +1,2046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Census Facility Dashboard</title>
+<style>
+  :root {
+    --label-color: #6B7280;
+    --border-color: #E5E7EB;
+    --text-color: #1A1A1A;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-color);
+  }
+
+  body { overflow: auto; }
+
+  #error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #E05A4E;
+    color: white;
+    font-size: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    z-index: 9999;
+    display: none;
+  }
+
+  .hidden { display: none !important; }
+
+  /* -------- Dashboard view -------- */
+  #dash {
+    box-sizing: border-box;
+    min-height: 100%;
+    padding: 8px;
+    position: relative;
+  }
+
+  #gear {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--label-color);
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s ease;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+
+  #gear:hover { opacity: 1; }
+
+  #dash-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 8px 2px;
+  }
+
+  #empty-state {
+    padding: 28px 16px;
+    font-size: 13px;
+    color: var(--label-color);
+  }
+
+  .panel {
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  }
+
+  .panel-title {
+    flex: 0 0 auto;
+    background: #F7F8FA;
+    border-bottom: 1px solid var(--border-color);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel-body.scroll-y { overflow-y: auto; overflow-x: hidden; }
+
+  /* -------- KPI row -------- */
+  #kpi-row {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .kpi-body {
+    padding: 10px 14px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .kpi-value {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kpi-line {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kpi-line .tri { font-size: 9px; }
+
+  .kpi-line.muted { color: var(--label-color); font-weight: 400; }
+
+  /* -------- Panels grid -------- */
+  #panel-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  /* Horizontal bar rows */
+  .hbar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+  }
+
+  .hbar-label {
+    flex: 0 0 132px;
+    font-size: 11px;
+    color: #4B5563;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+  }
+
+  .hbar-track { flex: 1 1 auto; display: flex; align-items: center; gap: 5px; min-width: 0; }
+
+  .hbar-bar { height: 12px; border-radius: 2px; flex: 0 0 auto; }
+
+  .hbar-value {
+    font-size: 10px;
+    color: var(--label-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* Pie layout */
+  .pie-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    padding: 6px 10px;
+    box-sizing: border-box;
+  }
+
+  .pie-svg { flex: 0 0 auto; }
+
+  .pie-legend {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-y: auto;
+    max-height: 100%;
+    font-size: 11px;
+  }
+
+  .pie-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .legend-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  .pie-legend-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pie-legend-label { color: #4B5563; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Trend legend chips */
+  .trend-legend {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 10px;
+    max-width: 70%;
+    font-size: 10px;
+    color: #4B5563;
+    z-index: 3;
+    background: rgba(255,255,255,0.75);
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+
+  .trend-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+  /* -------- Dialog view -------- */
+  #dialog {
+    display: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 16px 20px;
+    overflow-y: auto;
+    background: #FFFFFF;
+  }
+
+  #dialog h2 { font-size: 15px; margin: 0 0 12px 0; }
+
+  #dialog fieldset {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    margin: 0 0 14px 0;
+    padding: 10px 12px 12px 12px;
+  }
+
+  #dialog legend {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+    padding: 0 4px;
+  }
+
+  #dialog .field { margin-bottom: 10px; }
+
+  #dialog label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+
+  #dialog label.check { font-weight: 400; }
+
+  #dialog .note { font-size: 12px; color: #6B7280; }
+
+  #dialog input[type="text"],
+  #dialog input[type="number"],
+  #dialog select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog input[type="checkbox"] { margin-right: 6px; }
+
+  #dialog input[type="color"] {
+    width: 44px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+
+  #dialog .row { display: flex; gap: 10px; }
+  #dialog .row > .field { flex: 1; }
+
+  #dialog .role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  #dialog .role-row > label { flex: 0 0 90px; margin: 0; }
+  #dialog .role-row > select { flex: 1; }
+
+  /* KPI card config grid */
+  .kpi-cfg-head, .kpi-cfg-row {
+    display: grid;
+    grid-template-columns: 46px 60px 1fr 110px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+
+  .kpi-cfg-head { font-size: 11px; color: #6B7280; font-weight: 600; }
+
+  /* Panel config rows */
+  .panel-cfg-head, .panel-cfg-row {
+    display: grid;
+    grid-template-columns: 44px 24px 1fr 96px 62px 64px 92px;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+
+  .panel-cfg-head { font-size: 11px; color: #6B7280; font-weight: 600; }
+
+  .panel-cfg-row .pname {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .panel-cfg-row .arrows { display: flex; gap: 2px; }
+
+  .panel-cfg-row .arrows button {
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  #dialog-buttons {
+    position: sticky;
+    bottom: 0;
+    background: #FFFFFF;
+    padding-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #E5E7EB;
+    margin-top: 6px;
+  }
+
+  #dialog button {
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    cursor: pointer;
+  }
+
+  #dialog button.primary {
+    background: #1A1A1A;
+    color: #FFFFFF;
+    border-color: #1A1A1A;
+  }
+</style>
+</head>
+<body>
+
+<div id="error-banner"></div>
+
+<!-- Dashboard view -->
+<div id="dash" class="hidden">
+  <button id="gear" title="Configure" aria-label="Configure">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+      <path d="M19.14 12.94a7.14 7.14 0 0 0 .06-.94 7.14 7.14 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.24.1.48-.02.6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 15.6 12 3.6 3.6 0 0 1 12 15.6Z"/>
+    </svg>
+  </button>
+  <h1 id="dash-title" class="hidden"></h1>
+  <div id="empty-state" class="hidden"></div>
+  <div id="kpi-row"></div>
+  <div id="panel-grid"></div>
+</div>
+
+<!-- Dialog / configuration view -->
+<div id="dialog">
+  <h2>Census Facility Dashboard — Settings</h2>
+
+  <fieldset>
+    <legend>General</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-title">Dashboard title (blank = none)</label>
+        <input type="text" id="f-title" placeholder="">
+      </div>
+      <div class="field">
+        <label for="f-kpi-word">Metric word (used in auto titles)</label>
+        <input type="text" id="f-kpi-word" placeholder="Census">
+      </div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-hib"> Higher is better (green when above budget)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Measure roles</legend>
+    <div id="roles-none" class="field note hidden">Drop measures on the Measures tile, then reopen this dialog to assign roles. Until then, roles are auto-detected from field names.</div>
+    <div id="role-rows"></div>
+    <div class="note">Actual is required. Budget drives the variance lines. Prior Year is optional — when it isn't mapped, the prior-year comparison is derived from the Date history (same window last year), so keep last year's dates in the worksheet if you want it.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>KPI cards</legend>
+    <div class="kpi-cfg-head"><span>Show</span><span>Card</span><span>Label override (blank = auto)</span><span>Aggregation</span></div>
+    <div class="kpi-cfg-row">
+      <span><input type="checkbox" id="f-kpi-day-show"></span>
+      <span style="font-size:12px;">Day</span>
+      <input type="text" id="f-kpi-day-label" placeholder="Census - July 2, 2026">
+      <select id="f-kpi-day-agg" disabled><option value="sum">Day total</option></select>
+    </div>
+    <div class="kpi-cfg-row">
+      <span><input type="checkbox" id="f-kpi-mtd-show"></span>
+      <span style="font-size:12px;">MTD</span>
+      <input type="text" id="f-kpi-mtd-label" placeholder="MTD Census - July 2026">
+      <select id="f-kpi-mtd-agg">
+        <option value="avg">ADC (average)</option>
+        <option value="sum">Sum</option>
+        <option value="latest">Latest day</option>
+      </select>
+    </div>
+    <div class="kpi-cfg-row">
+      <span><input type="checkbox" id="f-kpi-ytd-show"></span>
+      <span style="font-size:12px;">YTD</span>
+      <input type="text" id="f-kpi-ytd-label" placeholder="YTD Census - 2026">
+      <select id="f-kpi-ytd-agg">
+        <option value="avg">ADC (average)</option>
+        <option value="sum">Sum</option>
+        <option value="latest">Latest day</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-show-budget"> Show budget variance lines</label>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-show-py"> Show prior-year comparison line</label>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Breakdown panels</legend>
+    <div id="panels-none" class="field note hidden">Drop dimensions (Phase, ALOS bucket, Drug Type, Payor, Modality, …) on the Breakdowns tile, then reopen this dialog to arrange them.</div>
+    <div id="panel-cfg-wrap">
+      <div class="panel-cfg-head"><span>Order</span><span></span><span>Dimension</span><span>Chart</span><span>Width</span><span>Top N</span><span>Sort</span></div>
+      <div id="panel-rows"></div>
+    </div>
+    <div class="note">Each checked dimension gets a chart panel, in this order, snapshotted at the latest date. Top N = 0 shows every category (pies always lump the tail into “Other”).</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Trend panel</legend>
+    <div class="row">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-trend-show"> Show trend panel</label>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-trend-budget"> Overlay budget area</label>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-trend-zero"> Y axis from zero</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-trend-split">Split lines by</label>
+        <select id="f-trend-split"></select>
+      </div>
+      <div class="field">
+        <label for="f-trend-topn">Max lines (top N by current)</label>
+        <input type="number" id="f-trend-topn" min="1" max="30" step="1">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-trend-window">Date window</label>
+        <select id="f-trend-window">
+          <option value="all">All dates in worksheet</option>
+          <option value="ytd">Year to date</option>
+          <option value="1y">Trailing 12 months</option>
+          <option value="2y">Trailing 24 months</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-trend-span">Width (grid columns)</label>
+        <select id="f-trend-span">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-trend-title">Title override</label>
+        <input type="text" id="f-trend-title" placeholder="blank = auto">
+      </div>
+    </div>
+    <div class="note">Splitting by a dimension across all sites can get messy — cap it with Max lines, or leave the split on “None” for a single clean actual-vs-budget line.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Number format</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-prefix">Prefix</label>
+        <input type="text" id="f-prefix" placeholder="">
+      </div>
+      <div class="field">
+        <label for="f-suffix">Suffix</label>
+        <input type="text" id="f-suffix" placeholder="">
+      </div>
+      <div class="field">
+        <label for="f-scale">Scale</label>
+        <select id="f-scale">
+          <option value="none">None</option>
+          <option value="K">Thousands (K)</option>
+          <option value="M">Millions (M)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-decimals">Decimals</label>
+        <select id="f-decimals">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label class="check"><input type="checkbox" id="f-thousands-sep"> Thousands separator</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Layout &amp; colors</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-grid-cols">Grid columns</label>
+        <select id="f-grid-cols">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-panel-height">Panel height (px)</label>
+        <input type="number" id="f-panel-height" min="140" max="600" step="10">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-transparent"> Transparent page background</label>
+      </div>
+      <div class="field">
+        <label for="f-page-bg">Page background</label>
+        <input type="color" id="f-page-bg">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-value-color">KPI value color</label>
+        <input type="color" id="f-value-color">
+      </div>
+      <div class="field">
+        <label for="f-chart-color">Chart base color</label>
+        <input type="color" id="f-chart-color">
+      </div>
+      <div class="field">
+        <label for="f-fav-text">Favorable text</label>
+        <input type="color" id="f-fav-text">
+      </div>
+      <div class="field">
+        <label for="f-unfav-text">Unfavorable text</label>
+        <input type="color" id="f-unfav-text">
+      </div>
+    </div>
+  </fieldset>
+
+  <div id="dialog-buttons">
+    <button id="btn-cancel">Cancel</button>
+    <button id="btn-save" class="primary">Save</button>
+  </div>
+</div>
+
+<script src="./tableau.extensions.1.latest.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Encoding tile ids (the schema allows at most 4 tiles per worksheet
+  // extension, so all measures share one tile and roles are mapped in JS).
+  var ENC = { DATE: 'date', MEASURES: 'measures', BREAKDOWNS: 'breakdowns' };
+
+  var ROLES = ['actual', 'budget', 'py'];
+  var ROLE_LABELS = { actual: 'Actual (census)', budget: 'Budget', py: 'Prior Year' };
+
+  var CHART_TYPES = [
+    { value: 'bars', label: 'Bars (horizontal)' },
+    { value: 'columns', label: 'Columns' },
+    { value: 'pie', label: 'Pie' },
+    { value: 'donut', label: 'Donut' }
+  ];
+
+  var DEFAULTS = {
+    titleOverride: '',
+    kpiWord: 'Census',
+    hib: 'true',
+    measureRoles: '{}',
+    kpiDayShow: 'true',
+    kpiMtdShow: 'true',
+    kpiYtdShow: 'true',
+    kpiDayLabel: '',
+    kpiMtdLabel: '',
+    kpiYtdLabel: '',
+    kpiMtdAgg: 'avg',
+    kpiYtdAgg: 'avg',
+    showBudget: 'true',
+    showPY: 'true',
+    panels: '[]',
+    trendShow: 'true',
+    trendBudget: 'true',
+    trendZero: 'false',
+    trendSplit: '',
+    trendTopN: '8',
+    trendWindow: 'all',
+    trendSpan: '3',
+    trendTitle: '',
+    prefix: '',
+    suffix: '',
+    scale: 'none',
+    decimals: '0',
+    thousandsSep: 'true',
+    gridCols: '3',
+    panelHeight: '230',
+    transparentBg: 'false',
+    pageBg: '#EDF0F3',
+    valueColor: '#2C5F8A',
+    chartColor: '#4A90D9',
+    favText: '#2E7D32',
+    unfavText: '#C62828'
+  };
+
+  function showFatalError(msg) {
+    var banner = document.getElementById('error-banner');
+    if (!banner) { return; }
+    banner.textContent = msg;
+    banner.style.display = 'block';
+  }
+
+  if (typeof tableau === 'undefined') {
+    showFatalError('Failed to load the Tableau Extensions API library (tableau.extensions.1.latest.min.js). ' +
+      'Make sure the file is deployed alongside index.html.');
+    return;
+  }
+
+  var isDialog = window.location.search.indexOf('dialog=1') !== -1;
+
+  function getSetting(settings, key) {
+    var v = settings[key];
+    return (v === undefined || v === null) ? DEFAULTS[key] : v;
+  }
+
+  function boolOf(v) { return v === true || v === 'true'; }
+
+  function intOf(v, fallback) {
+    var n = parseInt(v, 10);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function parseJsonMap(raw) {
+    try {
+      var v = JSON.parse(raw || '{}');
+      return (v && typeof v === 'object') ? v : {};
+    } catch (e) { return {}; }
+  }
+
+  function parseJsonArray(raw) {
+    try {
+      var v = JSON.parse(raw || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+
+  function readConfig(settings) {
+    return {
+      titleOverride: getSetting(settings, 'titleOverride'),
+      kpiWord: getSetting(settings, 'kpiWord') || 'Census',
+      hib: boolOf(getSetting(settings, 'hib')),
+      measureRoles: getSetting(settings, 'measureRoles'),
+      kpiDayShow: boolOf(getSetting(settings, 'kpiDayShow')),
+      kpiMtdShow: boolOf(getSetting(settings, 'kpiMtdShow')),
+      kpiYtdShow: boolOf(getSetting(settings, 'kpiYtdShow')),
+      kpiDayLabel: getSetting(settings, 'kpiDayLabel'),
+      kpiMtdLabel: getSetting(settings, 'kpiMtdLabel'),
+      kpiYtdLabel: getSetting(settings, 'kpiYtdLabel'),
+      kpiMtdAgg: getSetting(settings, 'kpiMtdAgg'),
+      kpiYtdAgg: getSetting(settings, 'kpiYtdAgg'),
+      showBudget: boolOf(getSetting(settings, 'showBudget')),
+      showPY: boolOf(getSetting(settings, 'showPY')),
+      panels: parseJsonArray(getSetting(settings, 'panels')),
+      trendShow: boolOf(getSetting(settings, 'trendShow')),
+      trendBudget: boolOf(getSetting(settings, 'trendBudget')),
+      trendZero: boolOf(getSetting(settings, 'trendZero')),
+      trendSplit: getSetting(settings, 'trendSplit'),
+      trendTopN: Math.max(1, intOf(getSetting(settings, 'trendTopN'), 8)),
+      trendWindow: getSetting(settings, 'trendWindow'),
+      trendSpan: intOf(getSetting(settings, 'trendSpan'), 3),
+      trendTitle: getSetting(settings, 'trendTitle'),
+      prefix: getSetting(settings, 'prefix'),
+      suffix: getSetting(settings, 'suffix'),
+      scale: getSetting(settings, 'scale'),
+      decimals: intOf(getSetting(settings, 'decimals'), 0),
+      thousandsSep: boolOf(getSetting(settings, 'thousandsSep')),
+      gridCols: Math.max(1, intOf(getSetting(settings, 'gridCols'), 3)),
+      panelHeight: Math.max(120, intOf(getSetting(settings, 'panelHeight'), 230)),
+      transparentBg: boolOf(getSetting(settings, 'transparentBg')),
+      pageBg: getSetting(settings, 'pageBg'),
+      valueColor: getSetting(settings, 'valueColor'),
+      chartColor: getSetting(settings, 'chartColor'),
+      favText: getSetting(settings, 'favText'),
+      unfavText: getSetting(settings, 'unfavText')
+    };
+  }
+
+  // =========================================================================
+  // Measure role resolution
+  // =========================================================================
+  function classifyMeasureName(name) {
+    var s = String(name).toLowerCase();
+    if (/budg|plan|target|forecast/.test(s)) { return 'budget'; }
+    if (/prior|previous|last.?year|(^|[^a-z])py([^a-z]|$)|(^|[^a-z])ly([^a-z]|$)/.test(s)) { return 'py'; }
+    if (/census|actual|count|adc/.test(s)) { return 'actual'; }
+    return null;
+  }
+
+  // Explicit saved assignments win ('' = explicitly none), then name
+  // classification, then the first unused field falls into Actual.
+  function resolveMeasureRoles(fieldNames, savedJson) {
+    var saved = parseJsonMap(savedJson);
+    var assign = {};
+    var used = {};
+
+    ROLES.forEach(function (role) {
+      var f = saved[role];
+      if (f === '') { assign[role] = null; }
+      else if (f && fieldNames.indexOf(f) !== -1 && !used[f]) { assign[role] = f; used[f] = true; }
+    });
+
+    fieldNames.forEach(function (f) {
+      if (used[f]) { return; }
+      var role = classifyMeasureName(f);
+      if (role && !(role in assign)) { assign[role] = f; used[f] = true; }
+    });
+
+    if (!('actual' in assign) || assign.actual === undefined) {
+      for (var i = 0; i < fieldNames.length; i++) {
+        if (!used[fieldNames[i]]) { assign.actual = fieldNames[i]; used[fieldNames[i]] = true; break; }
+      }
+    }
+
+    ROLES.forEach(function (role) { if (!(role in assign) || assign[role] === undefined) { assign[role] = null; } });
+    return assign;
+  }
+
+  // =========================================================================
+  // Formatting & dates
+  // =========================================================================
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function scaleParts(scale) {
+    if (scale === 'M') { return { divisor: 1e6, letter: 'M' }; }
+    if (scale === 'K') { return { divisor: 1e3, letter: 'K' }; }
+    return { divisor: 1, letter: '' };
+  }
+
+  // Accounting style: negatives wrapped in parentheses.
+  function formatNumber(num, cfg, decimalsOverride) {
+    if (num === null || num === undefined || isNaN(num)) { return '–'; }
+    var sp = scaleParts(cfg.scale);
+    var decimals = decimalsOverride !== undefined ? decimalsOverride : cfg.decimals;
+    var scaled = Math.abs(num) / sp.divisor;
+    var numStr;
+    if (cfg.thousandsSep) {
+      numStr = scaled.toLocaleString('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    } else {
+      numStr = scaled.toFixed(decimals);
+    }
+    var core = cfg.prefix + numStr + sp.letter + cfg.suffix;
+    return num < 0 ? '(' + core + ')' : core;
+  }
+
+  function fmtAxis(v) {
+    var a = Math.abs(v);
+    if (a >= 1e6) { return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M'; }
+    return Math.round(v).toLocaleString('en-US');
+  }
+
+  function isNullValue(dv) {
+    return !dv || dv.value === null || dv.value === undefined || String(dv.value) === '%null%';
+  }
+
+  function numOf(dv) {
+    if (isNullValue(dv)) { return NaN; }
+    var v = dv.value;
+    var n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : NaN;
+  }
+
+  // Normalizes any Tableau date value to a UTC-midnight ms key.
+  function parseDateMs(raw) {
+    var s = String(raw);
+    var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+    if (m) { return Date.UTC(+m[1], +m[2] - 1, +m[3]); }
+    var t = Date.parse(s);
+    if (isNaN(t)) { t = Date.parse(s.replace(' ', 'T')); }
+    if (isNaN(t)) { return null; }
+    var d = new Date(t);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  function shiftYear(ms, delta) {
+    var d = new Date(ms);
+    var y = d.getUTCFullYear() + delta;
+    var mo = d.getUTCMonth();
+    var day = d.getUTCDate();
+    var lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    return Date.UTC(y, mo, Math.min(day, lastDay));
+  }
+
+  function fmtDateLong(ms) {
+    var d = new Date(ms);
+    return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear();
+  }
+
+  function fmtMonthYear(ms) {
+    var d = new Date(ms);
+    return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  }
+
+  // {start, end} inclusive UTC-midnight ms bounds for a KPI window.
+  function windowFor(type, anchorMs) {
+    var d = new Date(anchorMs);
+    var y = d.getUTCFullYear();
+    var mo = d.getUTCMonth();
+    var start = type === 'day' ? anchorMs : (type === 'mtd' ? Date.UTC(y, mo, 1) : Date.UTC(y, 0, 1));
+    return { start: start, end: anchorMs };
+  }
+
+  // =========================================================================
+  // Blue palette (derived shades around the configurable base color)
+  // =========================================================================
+  function hexToRgb(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+    if (!m) { return { r: 74, g: 144, b: 217 }; }
+    var n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
+  function mix(c, target, t) {
+    return {
+      r: Math.round(c.r + (target.r - c.r) * t),
+      g: Math.round(c.g + (target.g - c.g) * t),
+      b: Math.round(c.b + (target.b - c.b) * t)
+    };
+  }
+
+  function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
+
+  function buildPalette(baseHex, n) {
+    var base = hexToRgb(baseHex);
+    var dark = { r: 16, g: 42, b: 67 };
+    var light = { r: 235, g: 243, b: 250 };
+    var out = [];
+    var count = Math.max(1, n);
+    for (var i = 0; i < count; i++) {
+      var t = count === 1 ? 0.5 : i / (count - 1);
+      // Sweep dark -> base -> light so adjacent slices stay distinguishable.
+      out.push(rgbStr(t < 0.5 ? mix(dark, base, t * 2) : mix(base, light, (t - 0.5) * 1.6)));
+    }
+    return out;
+  }
+
+  function lighten(hex, t) {
+    return rgbStr(mix(hexToRgb(hex), { r: 255, g: 255, b: 255 }, t));
+  }
+
+  // =========================================================================
+  // Nice axis ticks
+  // =========================================================================
+  function niceTicks(min, max, count) {
+    if (!(max > min)) { max = min + 1; }
+    var span = max - min;
+    var step = Math.pow(10, Math.floor(Math.log(span / count) / Math.LN10));
+    var err = span / count / step;
+    if (err >= 7.5) { step *= 10; }
+    else if (err >= 3.5) { step *= 5; }
+    else if (err >= 1.5) { step *= 2; }
+    var ticks = [];
+    for (var v = Math.ceil(min / step) * step; v <= max + step * 0.001; v += step) {
+      ticks.push(v);
+    }
+    return ticks;
+  }
+
+  // =========================================================================
+  // Dashboard app
+  // =========================================================================
+  function DashApp() {
+    this.worksheet = null;
+    this.settings = {};
+    this.encodingMap = {};
+    this.rows = [];
+    this.renderQueued = false;
+  }
+
+  DashApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeAsync({ configure: function () { self.openConfigDialog(); } }).then(function () {
+      self.worksheet = tableau.extensions.worksheetContent.worksheet;
+      self.settings = tableau.extensions.settings.getAll();
+
+      document.getElementById('dash').classList.remove('hidden');
+      document.getElementById('gear').addEventListener('click', function () {
+        self.openConfigDialog();
+      });
+
+      self.worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () {
+        self.updateAndRender();
+      });
+
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, function (evt) {
+        self.settings = evt.newSettings;
+        self.render();
+      });
+
+      var queueRender = function () {
+        if (self.renderQueued) { return; }
+        self.renderQueued = true;
+        setTimeout(function () {
+          self.renderQueued = false;
+          self.render();
+        }, 120);
+      };
+      window.addEventListener('resize', queueRender);
+
+      return self.updateAndRender();
+    }, function (err) {
+      showFatalError('Failed to initialize extension: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DashApp.prototype.fieldNamesFor = function (encodingId) {
+    return (this.encodingMap[encodingId] || []).map(function (f) { return f.name; });
+  };
+
+  DashApp.prototype.openConfigDialog = function () {
+    var payload = JSON.stringify({
+      measureFields: this.fieldNamesFor(ENC.MEASURES),
+      breakdownFields: this.fieldNamesFor(ENC.BREAKDOWNS)
+    });
+    var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
+    tableau.extensions.ui.displayDialogAsync(popupUrl, payload, { height: 900, width: 640 })
+      .catch(function (error) {
+        if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
+        console.error(error);
+      });
+  };
+
+  DashApp.prototype.getEncodingMap = function () {
+    return this.worksheet.getVisualSpecificationAsync().then(function (visualSpec) {
+      var map = {};
+      if (visualSpec.activeMarksSpecificationIndex < 0) { return map; }
+      var marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+      marksCard.encodings.forEach(function (encoding) {
+        if (!map[encoding.id]) { map[encoding.id] = []; }
+        map[encoding.id].push(encoding.field);
+      });
+      return map;
+    });
+  };
+
+  DashApp.prototype.getSummaryRows = function () {
+    return this.worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true }).then(function (reader) {
+      var pageCount = reader.pageCount;
+      var chain = Promise.resolve();
+      var pages = [];
+      for (var i = 0; i < pageCount; i++) {
+        (function (pageIndex) {
+          chain = chain.then(function () {
+            return reader.getPageAsync(pageIndex).then(function (page) { pages.push(page); });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        return reader.releaseAsync().then(function () { return pages; });
+      });
+    }).then(function (pages) {
+      var rows = [];
+      pages.forEach(function (page) {
+        var columns = page.columns;
+        for (var i = 0; i < page.data.length; i++) {
+          var row = {};
+          for (var j = 0; j < columns.length; j++) {
+            row[columns[j].fieldName] = page.data[i][columns[j].index];
+          }
+          rows.push(row);
+        }
+      });
+      return rows;
+    });
+  };
+
+  DashApp.prototype.updateAndRender = function () {
+    var self = this;
+    return Promise.all([self.getEncodingMap(), self.getSummaryRows()]).then(function (results) {
+      self.encodingMap = results[0];
+      self.rows = results[1];
+      self.render();
+    }).catch(function (err) {
+      showFatalError('Failed to read worksheet data: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  // ---- data shaping ----
+
+  // Per-date totals: dateMs -> {a, aAny, b, bAny, p, pAny}
+  DashApp.prototype.buildDailyTotals = function (dateField, roleMap) {
+    var daily = {};
+    var actualF = roleMap.actual, budgetF = roleMap.budget, pyF = roleMap.py;
+    this.rows.forEach(function (row) {
+      var dv = row[dateField];
+      if (isNullValue(dv)) { return; }
+      var ms = parseDateMs(dv.value);
+      if (ms === null) { return; }
+      var d = daily[ms];
+      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false }; }
+      var a = actualF ? numOf(row[actualF]) : NaN;
+      if (!isNaN(a)) { d.a += a; d.aAny = true; }
+      var b = budgetF ? numOf(row[budgetF]) : NaN;
+      if (!isNaN(b)) { d.b += b; d.bAny = true; }
+      var p = pyF ? numOf(row[pyF]) : NaN;
+      if (!isNaN(p)) { d.p += p; d.pAny = true; }
+    });
+    return daily;
+  };
+
+  function aggWindow(daily, keys, win, prop, anyProp, mode) {
+    var sum = 0, count = 0, latestKey = -Infinity, latestVal = null;
+    keys.forEach(function (k) {
+      if (k < win.start || k > win.end) { return; }
+      var d = daily[k];
+      if (!d[anyProp]) { return; }
+      sum += d[prop];
+      count++;
+      if (k > latestKey) { latestKey = k; latestVal = d[prop]; }
+    });
+    if (count === 0) { return null; }
+    if (mode === 'sum') { return sum; }
+    if (mode === 'latest') { return latestVal; }
+    return sum / count;
+  }
+
+  // ---- render ----
+
+  DashApp.prototype.render = function () {
+    var cfg = readConfig(this.settings);
+    var dash = document.getElementById('dash');
+    var emptyEl = document.getElementById('empty-state');
+    var kpiRow = document.getElementById('kpi-row');
+    var grid = document.getElementById('panel-grid');
+    var titleEl = document.getElementById('dash-title');
+
+    document.body.style.background = cfg.transparentBg ? 'transparent' : cfg.pageBg;
+    titleEl.textContent = cfg.titleOverride;
+    titleEl.classList.toggle('hidden', !cfg.titleOverride);
+
+    var dateFields = this.fieldNamesFor(ENC.DATE);
+    var measureFields = this.fieldNamesFor(ENC.MEASURES);
+    var dateField = dateFields.length > 0 ? dateFields[0] : null;
+    var roleMap = resolveMeasureRoles(measureFields, cfg.measureRoles);
+
+    kpiRow.innerHTML = '';
+    grid.innerHTML = '';
+
+    if (!dateField || !roleMap.actual || this.rows.length === 0) {
+      emptyEl.textContent = 'Drop a daily Date field on the Date tile and your census measure (plus Budget and optionally Prior Year) on Measures. Breakdown dimensions go on the Breakdowns tile.';
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    emptyEl.classList.add('hidden');
+
+    var daily = this.buildDailyTotals(dateField, roleMap);
+    var keys = Object.keys(daily).map(Number).sort(function (a, b) { return a - b; });
+    var anchorMs = null;
+    for (var i = keys.length - 1; i >= 0; i--) {
+      if (daily[keys[i]].aAny) { anchorMs = keys[i]; break; }
+    }
+    if (anchorMs === null) {
+      emptyEl.textContent = 'No non-null values found for the Actual measure.';
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    this.renderKpis(kpiRow, cfg, daily, keys, anchorMs, roleMap);
+    this.renderPanels(grid, cfg, dateField, roleMap, daily, keys, anchorMs);
+  };
+
+  DashApp.prototype.renderKpis = function (kpiRow, cfg, daily, keys, anchorMs, roleMap) {
+    var cards = [];
+    if (cfg.kpiDayShow) {
+      cards.push({ type: 'day', agg: 'sum', label: cfg.kpiDayLabel || (cfg.kpiWord + ' - ' + fmtDateLong(anchorMs)) });
+    }
+    if (cfg.kpiMtdShow) {
+      cards.push({ type: 'mtd', agg: cfg.kpiMtdAgg, label: cfg.kpiMtdLabel || ('MTD ' + cfg.kpiWord + ' - ' + fmtMonthYear(anchorMs)) });
+    }
+    if (cfg.kpiYtdShow) {
+      cards.push({ type: 'ytd', agg: cfg.kpiYtdAgg, label: cfg.kpiYtdLabel || ('YTD ' + cfg.kpiWord + ' - ' + new Date(anchorMs).getUTCFullYear()) });
+    }
+    kpiRow.style.display = cards.length > 0 ? 'grid' : 'none';
+
+    var hasPyMeasure = !!roleMap.py;
+    cards.forEach(function (card) {
+      var win = windowFor(card.type, anchorMs);
+      var actual = aggWindow(daily, keys, win, 'a', 'aAny', card.agg);
+      var budget = aggWindow(daily, keys, win, 'b', 'bAny', card.agg);
+      var py;
+      if (hasPyMeasure) {
+        py = aggWindow(daily, keys, win, 'p', 'pAny', card.agg);
+      } else {
+        var pyWin = { start: shiftYear(win.start, -1), end: shiftYear(win.end, -1) };
+        py = aggWindow(daily, keys, pyWin, 'a', 'aAny', card.agg);
+      }
+
+      var panel = document.createElement('div');
+      panel.className = 'panel';
+      var title = document.createElement('div');
+      title.className = 'panel-title';
+      title.textContent = card.label;
+      panel.appendChild(title);
+
+      var body = document.createElement('div');
+      body.className = 'kpi-body';
+
+      var valueEl = document.createElement('div');
+      valueEl.className = 'kpi-value';
+      valueEl.style.color = cfg.valueColor;
+      valueEl.textContent = formatNumber(actual, cfg);
+      body.appendChild(valueEl);
+
+      if (cfg.showBudget && budget !== null && actual !== null) {
+        var delta = actual - budget;
+        var favorable = (delta >= 0) === cfg.hib;
+        var color = favorable ? cfg.favText : cfg.unfavText;
+        var pct = budget !== 0 ? Math.abs(delta / budget) * 100 : null;
+
+        var line1 = document.createElement('div');
+        line1.className = 'kpi-line';
+        line1.style.color = color;
+        line1.innerHTML = '';
+        line1.appendChild(document.createTextNode(formatNumber(delta, cfg) + ' '));
+        var tri = document.createElement('span');
+        tri.className = 'tri';
+        tri.textContent = delta >= 0 ? '▲' : '▼';
+        line1.appendChild(tri);
+        line1.appendChild(document.createTextNode(' ' + (delta >= 0 ? 'above' : 'below') + ' ' +
+          formatNumber(budget, cfg) + ' budget'));
+        body.appendChild(line1);
+
+        var line2 = document.createElement('div');
+        line2.className = 'kpi-line';
+        line2.style.color = color;
+        var pctStr = pct === null ? '–' : pct.toFixed(pct >= 10 ? 0 : 1) + '%';
+        line2.textContent = (delta < 0 ? '(' + pctStr + ')' : pctStr) + ' ' + (favorable ? 'favorable' : 'unfavorable');
+        body.appendChild(line2);
+      }
+
+      if (cfg.showPY) {
+        var pyLine = document.createElement('div');
+        pyLine.className = 'kpi-line';
+        if (py === null || actual === null) {
+          pyLine.classList.add('muted');
+          pyLine.textContent = 'PY: no data';
+        } else {
+          var pyDelta = actual - py;
+          var pyFav = (pyDelta >= 0) === cfg.hib;
+          pyLine.style.color = pyFav ? cfg.favText : cfg.unfavText;
+          var pyPct = py !== 0 ? Math.abs(pyDelta / py) * 100 : null;
+          var pyTri = document.createElement('span');
+          pyTri.className = 'tri';
+          pyTri.textContent = pyDelta >= 0 ? '▲' : '▼';
+          pyLine.appendChild(document.createTextNode('vs PY ' + formatNumber(py, cfg) + ' '));
+          pyLine.appendChild(pyTri);
+          pyLine.appendChild(document.createTextNode(' ' +
+            (pyPct === null ? '–' : pyPct.toFixed(pyPct >= 10 ? 0 : 1) + '%')));
+        }
+        body.appendChild(pyLine);
+      }
+
+      panel.appendChild(body);
+      kpiRow.appendChild(panel);
+    });
+  };
+
+  // Merges the saved panel config with the dimensions currently on the
+  // Breakdowns tile: saved entries keep their order, new dimensions append.
+  function reconcilePanels(saved, mappedDims) {
+    var out = [];
+    var seen = {};
+    saved.forEach(function (p) {
+      if (p && p.dim && mappedDims.indexOf(p.dim) !== -1 && !seen[p.dim]) {
+        seen[p.dim] = true;
+        out.push({
+          dim: p.dim,
+          show: p.show !== false,
+          chart: CHART_TYPES.some(function (c) { return c.value === p.chart; }) ? p.chart : 'bars',
+          span: Math.max(1, intOf(p.span, 1)),
+          topN: Math.max(0, intOf(p.topN, 0)),
+          sort: ['desc', 'asc', 'alpha', 'data'].indexOf(p.sort) !== -1 ? p.sort : 'desc'
+        });
+      }
+    });
+    mappedDims.forEach(function (dim) {
+      if (!seen[dim]) {
+        out.push({ dim: dim, show: true, chart: 'bars', span: 1, topN: 0, sort: 'desc' });
+      }
+    });
+    return out;
+  }
+
+  DashApp.prototype.renderPanels = function (grid, cfg, dateField, roleMap, daily, keys, anchorMs) {
+    var self = this;
+    var mappedDims = this.fieldNamesFor(ENC.BREAKDOWNS);
+    var panels = reconcilePanels(cfg.panels, mappedDims);
+
+    grid.style.gridTemplateColumns = 'repeat(' + cfg.gridCols + ', minmax(0, 1fr))';
+
+    var anchorRows = this.rows.filter(function (row) {
+      var dv = row[dateField];
+      return !isNullValue(dv) && parseDateMs(dv.value) === anchorMs;
+    });
+
+    panels.forEach(function (p) {
+      if (!p.show) { return; }
+      var items = groupByDim(anchorRows, p.dim, roleMap.actual);
+      sortItems(items, p.sort);
+
+      var panel = document.createElement('div');
+      panel.className = 'panel';
+      panel.style.gridColumn = 'span ' + Math.min(p.span, cfg.gridCols);
+      var title = document.createElement('div');
+      title.className = 'panel-title';
+      title.textContent = cfg.kpiWord + ' by ' + p.dim + ' - ' + fmtDateLong(anchorMs);
+      panel.appendChild(title);
+      var body = document.createElement('div');
+      body.className = 'panel-body';
+      panel.appendChild(body);
+      grid.appendChild(panel);
+
+      if (items.length === 0) {
+        body.innerHTML = '<div style="padding:12px;font-size:12px;color:#6B7280;">No data.</div>';
+        return;
+      }
+
+      if (p.chart === 'bars') {
+        body.classList.add('scroll-y');
+        body.style.height = cfg.panelHeight + 'px';
+        renderBars(body, limitItems(items, p.topN, false), cfg);
+      } else if (p.chart === 'columns') {
+        body.style.height = cfg.panelHeight + 'px';
+        renderColumns(body, limitItems(items, p.topN, false), cfg);
+      } else {
+        body.style.height = cfg.panelHeight + 'px';
+        var pieItems = limitItems(items, p.topN > 0 ? p.topN : 8, true);
+        renderPie(body, pieItems, cfg, p.chart === 'donut');
+      }
+    });
+
+    if (cfg.trendShow) {
+      var panel = document.createElement('div');
+      panel.className = 'panel';
+      panel.style.gridColumn = 'span ' + Math.min(cfg.trendSpan, cfg.gridCols);
+      var title = document.createElement('div');
+      title.className = 'panel-title';
+      var split = cfg.trendSplit && mappedDims.indexOf(cfg.trendSplit) !== -1 ? cfg.trendSplit : null;
+      title.textContent = cfg.trendTitle ||
+        (cfg.kpiWord + ' Trend' + (split ? ' by ' + split : ' vs Budget'));
+      panel.appendChild(title);
+      var body = document.createElement('div');
+      body.className = 'panel-body';
+      body.style.height = cfg.panelHeight + 'px';
+      panel.appendChild(body);
+      grid.appendChild(body.parentNode);
+
+      var winStart = trendWindowStart(cfg.trendWindow, anchorMs);
+      if (split) {
+        var series = self.buildSplitSeries(dateField, split, roleMap.actual, winStart, anchorMs, cfg.trendTopN, cfg);
+        renderTrend(body, series, null, cfg);
+      } else {
+        var actualPts = [], budgetPts = [];
+        keys.forEach(function (k) {
+          if (k < winStart || k > anchorMs) { return; }
+          var d = daily[k];
+          if (d.aAny) { actualPts.push([k, d.a]); }
+          if (d.bAny) { budgetPts.push([k, d.b]); }
+        });
+        var series = [{ label: 'Actual', color: cfg.valueColor, points: actualPts }];
+        var area = (cfg.trendBudget && budgetPts.length > 1)
+          ? { label: 'Budget', points: budgetPts, fill: lighten(cfg.chartColor, 0.62) }
+          : null;
+        renderTrend(body, series, area, cfg);
+      }
+    }
+  };
+
+  DashApp.prototype.buildSplitSeries = function (dateField, splitDim, actualField, winStart, anchorMs, topN, cfg) {
+    // member -> (dateMs -> sum)
+    var byMember = {};
+    this.rows.forEach(function (row) {
+      var dv = row[dateField];
+      if (isNullValue(dv)) { return; }
+      var ms = parseDateMs(dv.value);
+      if (ms === null || ms < winStart || ms > anchorMs) { return; }
+      var mv = row[splitDim];
+      if (isNullValue(mv)) { return; }
+      var label = mv.formattedValue;
+      var a = numOf(row[actualField]);
+      if (isNaN(a)) { return; }
+      var m = byMember[label];
+      if (!m) { m = byMember[label] = {}; }
+      m[ms] = (m[ms] || 0) + a;
+    });
+
+    var members = Object.keys(byMember).map(function (label) {
+      var m = byMember[label];
+      return { label: label, current: m[anchorMs] || 0, map: m };
+    });
+    members.sort(function (a, b) { return b.current - a.current; });
+    members = members.slice(0, topN);
+
+    var palette = buildPalette(cfg.chartColor, Math.max(members.length, 3));
+    return members.map(function (mem, i) {
+      var pts = Object.keys(mem.map).map(Number).sort(function (a, b) { return a - b; })
+        .map(function (k) { return [k, mem.map[k]]; });
+      return { label: mem.label, color: palette[i % palette.length], points: pts };
+    });
+  };
+
+  function trendWindowStart(mode, anchorMs) {
+    var d = new Date(anchorMs);
+    if (mode === 'ytd') { return Date.UTC(d.getUTCFullYear(), 0, 1); }
+    if (mode === '1y') { return shiftYear(anchorMs, -1); }
+    if (mode === '2y') { return shiftYear(anchorMs, -2); }
+    return -Infinity;
+  }
+
+  // ---- grouping helpers ----
+
+  function groupByDim(rows, dimField, actualField) {
+    var buckets = {};
+    var order = [];
+    rows.forEach(function (row) {
+      var dv = row[dimField];
+      if (isNullValue(dv)) { return; }
+      var label = dv.formattedValue;
+      var a = numOf(row[actualField]);
+      if (isNaN(a)) { return; }
+      if (!(label in buckets)) { buckets[label] = 0; order.push(label); }
+      buckets[label] += a;
+    });
+    return order.map(function (label) { return { label: label, value: buckets[label] }; });
+  }
+
+  function sortItems(items, mode) {
+    if (mode === 'data') { return; }
+    if (mode === 'alpha') {
+      items.sort(function (a, b) { return a.label < b.label ? -1 : a.label > b.label ? 1 : 0; });
+    } else if (mode === 'asc') {
+      items.sort(function (a, b) { return a.value - b.value; });
+    } else {
+      items.sort(function (a, b) { return b.value - a.value; });
+    }
+  }
+
+  // topN = 0 keeps everything. When lumping, the tail becomes one "Other".
+  function limitItems(items, topN, lumpOther) {
+    if (topN <= 0 || items.length <= topN) { return items; }
+    var kept = items.slice(0, topN);
+    if (lumpOther) {
+      var rest = 0;
+      for (var i = topN; i < items.length; i++) { rest += items[i].value; }
+      if (rest > 0) { kept = kept.concat([{ label: 'Other', value: rest, isOther: true }]); }
+    }
+    return kept;
+  }
+
+  // ---- chart renderers ----
+
+  function renderBars(body, items, cfg) {
+    body.innerHTML = '';
+    var max = 0;
+    items.forEach(function (it) { if (it.value > max) { max = it.value; } });
+    if (max <= 0) { max = 1; }
+    var frag = document.createDocumentFragment();
+    items.forEach(function (it) {
+      var row = document.createElement('div');
+      row.className = 'hbar-row';
+      var label = document.createElement('div');
+      label.className = 'hbar-label';
+      label.textContent = it.label;
+      label.title = it.label;
+      row.appendChild(label);
+      var track = document.createElement('div');
+      track.className = 'hbar-track';
+      var bar = document.createElement('div');
+      bar.className = 'hbar-bar';
+      bar.style.width = Math.max(0.5, (it.value / max) * 100 * 0.82) + '%';
+      bar.style.background = it.isOther ? '#B9C2CC' : cfg.chartColor;
+      track.appendChild(bar);
+      var val = document.createElement('div');
+      val.className = 'hbar-value';
+      val.textContent = formatNumber(it.value, cfg);
+      track.appendChild(val);
+      row.appendChild(track);
+      frag.appendChild(row);
+    });
+    body.appendChild(frag);
+  }
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    return el;
+  }
+
+  function renderColumns(body, items, cfg) {
+    body.innerHTML = '';
+    var W = Math.max(120, body.clientWidth);
+    var H = Math.max(100, body.clientHeight);
+    var mT = 16, mB = 26, mL = 6, mR = 6;
+    var innerW = W - mL - mR, innerH = H - mT - mB;
+    var n = items.length;
+    var max = 0;
+    items.forEach(function (it) { if (it.value > max) { max = it.value; } });
+    if (max <= 0) { max = 1; }
+
+    var svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+    var slot = innerW / n;
+    var barW = Math.max(2, Math.min(slot * 0.68, 60));
+    var showValues = slot >= 28;
+    var labelEvery = Math.max(1, Math.ceil(n / Math.floor(innerW / 34)));
+
+    items.forEach(function (it, i) {
+      var h = Math.max(1, (it.value / max) * innerH);
+      var x = mL + slot * i + (slot - barW) / 2;
+      var y = mT + innerH - h;
+      var rect = svgEl('rect', {
+        x: x.toFixed(1), y: y.toFixed(1), width: barW.toFixed(1), height: h.toFixed(1),
+        fill: it.isOther ? '#B9C2CC' : cfg.chartColor, rx: 1.5
+      });
+      var t = svgEl('title', {});
+      t.textContent = it.label + ': ' + formatNumber(it.value, cfg);
+      rect.appendChild(t);
+      svg.appendChild(rect);
+
+      if (showValues) {
+        var vt = svgEl('text', {
+          x: (x + barW / 2).toFixed(1), y: (y - 4).toFixed(1),
+          'text-anchor': 'middle', 'font-size': '9', fill: '#6B7280'
+        });
+        vt.textContent = formatNumber(it.value, cfg);
+        svg.appendChild(vt);
+      }
+      if (i % labelEvery === 0) {
+        var maxChars = Math.max(3, Math.floor(slot * labelEvery / 6));
+        var lbl = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label;
+        var lt = svgEl('text', {
+          x: (mL + slot * i + slot / 2).toFixed(1), y: (H - mB + 13).toFixed(1),
+          'text-anchor': 'middle', 'font-size': '9', fill: '#6B7280'
+        });
+        lt.textContent = lbl;
+        var tt = svgEl('title', {});
+        tt.textContent = it.label;
+        lt.appendChild(tt);
+        svg.appendChild(lt);
+      }
+    });
+
+    svg.appendChild(svgEl('line', {
+      x1: mL, y1: mT + innerH + 0.5, x2: W - mR, y2: mT + innerH + 0.5,
+      stroke: '#D1D5DB', 'stroke-width': 1
+    }));
+    body.appendChild(svg);
+  }
+
+  function renderPie(body, items, cfg, donut) {
+    body.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'pie-wrap';
+    var H = Math.max(100, body.clientHeight) - 12;
+    var size = Math.min(H, Math.max(90, Math.floor(body.clientWidth * 0.45)));
+    var R = size / 2;
+    var total = 0;
+    items.forEach(function (it) { total += Math.max(0, it.value); });
+    if (total <= 0) { total = 1; }
+
+    var palette = buildPalette(cfg.chartColor, Math.max(items.length, 3));
+    var svg = svgEl('svg', { width: size, height: size, viewBox: '0 0 ' + size + ' ' + size, 'class': 'pie-svg' });
+    var cx = R, cy = R;
+    var angle = -Math.PI / 2;
+
+    items.forEach(function (it, i) {
+      var frac = Math.max(0, it.value) / total;
+      var a2 = angle + frac * Math.PI * 2;
+      var large = (a2 - angle) > Math.PI ? 1 : 0;
+      var x1 = cx + R * Math.cos(angle), y1 = cy + R * Math.sin(angle);
+      var x2 = cx + R * Math.cos(a2), y2 = cy + R * Math.sin(a2);
+      var color = it.isOther ? '#B9C2CC' : palette[i % palette.length];
+      var path;
+      if (frac >= 0.9999) {
+        path = svgEl('circle', { cx: cx, cy: cy, r: R, fill: color });
+      } else {
+        path = svgEl('path', {
+          d: 'M' + cx + ' ' + cy + ' L' + x1.toFixed(2) + ' ' + y1.toFixed(2) +
+            ' A' + R + ' ' + R + ' 0 ' + large + ' 1 ' + x2.toFixed(2) + ' ' + y2.toFixed(2) + ' Z',
+          fill: color, stroke: '#FFFFFF', 'stroke-width': 1
+        });
+      }
+      var t = svgEl('title', {});
+      t.textContent = it.label + ': ' + formatNumber(it.value, cfg) + ' (' + (frac * 100).toFixed(1) + '%)';
+      path.appendChild(t);
+      svg.appendChild(path);
+      angle = a2;
+    });
+
+    if (donut) {
+      svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: (R * 0.55).toFixed(1), fill: '#FFFFFF' }));
+    }
+
+    wrap.appendChild(svg);
+
+    var legend = document.createElement('div');
+    legend.className = 'pie-legend';
+    items.forEach(function (it, i) {
+      var row = document.createElement('div');
+      row.className = 'pie-legend-row';
+      var dot = document.createElement('span');
+      dot.className = 'legend-dot';
+      dot.style.background = it.isOther ? '#B9C2CC' : palette[i % palette.length];
+      row.appendChild(dot);
+      var pct = document.createElement('span');
+      pct.className = 'pie-legend-pct';
+      pct.textContent = ((Math.max(0, it.value) / total) * 100).toFixed(0) + '%';
+      row.appendChild(pct);
+      var lbl = document.createElement('span');
+      lbl.className = 'pie-legend-label';
+      lbl.textContent = it.label;
+      lbl.title = it.label + ': ' + formatNumber(it.value, cfg);
+      row.appendChild(lbl);
+      legend.appendChild(row);
+    });
+    wrap.appendChild(legend);
+    body.appendChild(wrap);
+  }
+
+  // series: [{label, color, points: [[ms, v], ...]}]; area: {points, fill} or null
+  function renderTrend(body, series, area, cfg) {
+    body.innerHTML = '';
+    var W = Math.max(160, body.clientWidth);
+    var H = Math.max(100, body.clientHeight);
+    var mL = 46, mR = 10, mT = 10, mB = 20;
+    var innerW = W - mL - mR, innerH = H - mT - mB;
+
+    var xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    var scanPts = function (pts) {
+      pts.forEach(function (p) {
+        if (p[0] < xmin) { xmin = p[0]; }
+        if (p[0] > xmax) { xmax = p[0]; }
+        if (p[1] < ymin) { ymin = p[1]; }
+        if (p[1] > ymax) { ymax = p[1]; }
+      });
+    };
+    series.forEach(function (s) { scanPts(s.points); });
+    if (area) { scanPts(area.points); }
+    if (!isFinite(xmin) || !isFinite(ymin)) {
+      body.innerHTML = '<div style="padding:12px;font-size:12px;color:#6B7280;">No data.</div>';
+      return;
+    }
+    if (xmax === xmin) { xmax = xmin + 86400000; }
+    if (cfg.trendZero) { ymin = 0; }
+    else { ymin = Math.max(0, ymin - (ymax - ymin) * 0.08); }
+    if (ymax === ymin) { ymax = ymin + 1; }
+    ymax += (ymax - ymin) * 0.04;
+
+    var x = function (ms) { return mL + ((ms - xmin) / (xmax - xmin)) * innerW; };
+    var y = function (v) { return mT + (1 - (v - ymin) / (ymax - ymin)) * innerH; };
+
+    var svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+
+    // y grid + labels
+    niceTicks(ymin, ymax, 4).forEach(function (tv) {
+      if (tv < ymin || tv > ymax) { return; }
+      var yy = y(tv);
+      svg.appendChild(svgEl('line', {
+        x1: mL, y1: yy.toFixed(1), x2: W - mR, y2: yy.toFixed(1),
+        stroke: '#EDF0F3', 'stroke-width': 1
+      }));
+      var lt = svgEl('text', {
+        x: mL - 5, y: (yy + 3).toFixed(1), 'text-anchor': 'end',
+        'font-size': '9', fill: '#6B7280'
+      });
+      lt.textContent = fmtAxis(tv);
+      svg.appendChild(lt);
+    });
+
+    // x ticks: yearly when the span is long, else monthly
+    var spanDays = (xmax - xmin) / 86400000;
+    var xTicks = [];
+    var d0 = new Date(xmin), d1 = new Date(xmax);
+    if (spanDays > 500) {
+      for (var yr = d0.getUTCFullYear() + (d0.getUTCMonth() === 0 && d0.getUTCDate() === 1 ? 0 : 1); yr <= d1.getUTCFullYear(); yr++) {
+        xTicks.push({ ms: Date.UTC(yr, 0, 1), label: String(yr) });
+      }
+    } else {
+      var everyM = spanDays > 240 ? 2 : 1;
+      var cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1);
+      while (cm <= xmax) {
+        var cd = new Date(cm);
+        if (cd.getUTCMonth() % everyM === 0) {
+          xTicks.push({ ms: cm, label: MONTHS[cd.getUTCMonth()].slice(0, 3) + (cd.getUTCMonth() === 0 ? ' ' + String(cd.getUTCFullYear()).slice(2) : '') });
+        }
+        cm = Date.UTC(cd.getUTCFullYear(), cd.getUTCMonth() + 1, 1);
+      }
+    }
+    xTicks.forEach(function (t) {
+      var xx = x(t.ms);
+      svg.appendChild(svgEl('line', {
+        x1: xx.toFixed(1), y1: mT, x2: xx.toFixed(1), y2: mT + innerH,
+        stroke: '#F1F3F5', 'stroke-width': 1
+      }));
+      var lt = svgEl('text', {
+        x: xx.toFixed(1), y: (H - 6).toFixed(1), 'text-anchor': 'middle',
+        'font-size': '9', fill: '#6B7280'
+      });
+      lt.textContent = t.label;
+      svg.appendChild(lt);
+    });
+
+    var linePath = function (pts) {
+      var d = '';
+      pts.forEach(function (p, i) {
+        d += (i === 0 ? 'M' : 'L') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1);
+      });
+      return d;
+    };
+
+    if (area && area.points.length > 1) {
+      var d = linePath(area.points) +
+        'L' + x(area.points[area.points.length - 1][0]).toFixed(1) + ' ' + (mT + innerH).toFixed(1) +
+        'L' + x(area.points[0][0]).toFixed(1) + ' ' + (mT + innerH).toFixed(1) + 'Z';
+      svg.appendChild(svgEl('path', { d: d, fill: area.fill, stroke: 'none' }));
+    }
+
+    series.forEach(function (s) {
+      if (s.points.length === 0) { return; }
+      if (s.points.length === 1) {
+        svg.appendChild(svgEl('circle', {
+          cx: x(s.points[0][0]).toFixed(1), cy: y(s.points[0][1]).toFixed(1), r: 2.5, fill: s.color
+        }));
+        return;
+      }
+      svg.appendChild(svgEl('path', {
+        d: linePath(s.points), fill: 'none', stroke: s.color,
+        'stroke-width': series.length > 1 ? 1.4 : 2,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round'
+      }));
+    });
+
+    body.appendChild(svg);
+
+    if (series.length > 1 || area) {
+      var legend = document.createElement('div');
+      legend.className = 'trend-legend';
+      var addChip = function (label, color) {
+        var chip = document.createElement('span');
+        var dot = document.createElement('span');
+        dot.className = 'legend-dot';
+        dot.style.background = color;
+        chip.appendChild(dot);
+        chip.appendChild(document.createTextNode(label));
+        legend.appendChild(chip);
+      };
+      if (area) { addChip(area.label || 'Budget', area.fill); }
+      series.forEach(function (s) { addChip(s.label, s.color); });
+      body.appendChild(legend);
+    }
+  }
+
+  // =========================================================================
+  // Dialog logic
+  // =========================================================================
+  function DialogApp() {
+    this.measureFields = [];
+    this.breakdownFields = [];
+    this.panelRows = [];
+  }
+
+  DialogApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeDialogAsync().then(function (payload) {
+      try {
+        var p = JSON.parse(payload || '{}');
+        self.measureFields = p.measureFields || [];
+        self.breakdownFields = p.breakdownFields || [];
+      } catch (e) { /* leave empty */ }
+
+      document.getElementById('dialog').style.display = 'block';
+      var settings = tableau.extensions.settings.getAll();
+      self.buildRoleRows(settings);
+      self.buildPanelRows(settings);
+      self.buildTrendSplit(settings);
+      self.populateForm(settings);
+
+      document.getElementById('btn-cancel').addEventListener('click', function () {
+        tableau.extensions.ui.closeDialog('cancel');
+      });
+      document.getElementById('btn-save').addEventListener('click', function () {
+        self.save();
+      });
+    }, function (err) {
+      showFatalError('Failed to initialize settings dialog: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DialogApp.prototype.buildRoleRows = function (settings) {
+    var container = document.getElementById('role-rows');
+    container.innerHTML = '';
+    if (this.measureFields.length === 0) {
+      document.getElementById('roles-none').classList.remove('hidden');
+      return;
+    }
+    var saved = parseJsonMap(getSetting(settings, 'measureRoles'));
+    var auto = resolveMeasureRoles(this.measureFields, '{}');
+    var measureFields = this.measureFields;
+
+    ROLES.forEach(function (role) {
+      var row = document.createElement('div');
+      row.className = 'role-row';
+      var label = document.createElement('label');
+      label.textContent = ROLE_LABELS[role];
+      row.appendChild(label);
+      var select = document.createElement('select');
+      select.id = 'role-' + role;
+      var optAuto = document.createElement('option');
+      optAuto.value = '__auto__';
+      optAuto.textContent = 'Auto' + (auto[role] ? ' (' + auto[role] + ')' : '');
+      select.appendChild(optAuto);
+      var optNone = document.createElement('option');
+      optNone.value = '__none__';
+      optNone.textContent = 'None';
+      select.appendChild(optNone);
+      measureFields.forEach(function (f) {
+        var opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        select.appendChild(opt);
+      });
+      var savedVal = saved[role];
+      if (savedVal === '') { select.value = '__none__'; }
+      else if (savedVal && measureFields.indexOf(savedVal) !== -1) { select.value = savedVal; }
+      else { select.value = '__auto__'; }
+      row.appendChild(select);
+      container.appendChild(row);
+    });
+  };
+
+  DialogApp.prototype.buildPanelRows = function (settings) {
+    var wrap = document.getElementById('panel-rows');
+    wrap.innerHTML = '';
+    if (this.breakdownFields.length === 0) {
+      document.getElementById('panels-none').classList.remove('hidden');
+      document.getElementById('panel-cfg-wrap').classList.add('hidden');
+      this.panelRows = [];
+      return;
+    }
+    this.panelRows = reconcilePanels(parseJsonArray(getSetting(settings, 'panels')), this.breakdownFields);
+    this.renderPanelRows();
+  };
+
+  DialogApp.prototype.renderPanelRows = function () {
+    var self = this;
+    var wrap = document.getElementById('panel-rows');
+    wrap.innerHTML = '';
+    this.panelRows.forEach(function (p, idx) {
+      var row = document.createElement('div');
+      row.className = 'panel-cfg-row';
+
+      var arrows = document.createElement('span');
+      arrows.className = 'arrows';
+      var up = document.createElement('button');
+      up.type = 'button';
+      up.textContent = '↑';
+      up.disabled = idx === 0;
+      up.addEventListener('click', function () {
+        var t = self.panelRows[idx - 1];
+        self.panelRows[idx - 1] = self.panelRows[idx];
+        self.panelRows[idx] = t;
+        self.renderPanelRows();
+      });
+      var down = document.createElement('button');
+      down.type = 'button';
+      down.textContent = '↓';
+      down.disabled = idx === self.panelRows.length - 1;
+      down.addEventListener('click', function () {
+        var t = self.panelRows[idx + 1];
+        self.panelRows[idx + 1] = self.panelRows[idx];
+        self.panelRows[idx] = t;
+        self.renderPanelRows();
+      });
+      arrows.appendChild(up);
+      arrows.appendChild(down);
+      row.appendChild(arrows);
+
+      var showWrap = document.createElement('span');
+      var show = document.createElement('input');
+      show.type = 'checkbox';
+      show.checked = p.show;
+      show.addEventListener('change', function () { p.show = show.checked; });
+      showWrap.appendChild(show);
+      row.appendChild(showWrap);
+
+      var name = document.createElement('span');
+      name.className = 'pname';
+      name.textContent = p.dim;
+      name.title = p.dim;
+      row.appendChild(name);
+
+      var chart = document.createElement('select');
+      CHART_TYPES.forEach(function (c) {
+        var opt = document.createElement('option');
+        opt.value = c.value;
+        opt.textContent = c.label;
+        chart.appendChild(opt);
+      });
+      chart.value = p.chart;
+      chart.addEventListener('change', function () { p.chart = chart.value; });
+      row.appendChild(chart);
+
+      var span = document.createElement('select');
+      [1, 2, 3, 4].forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = String(s);
+        opt.textContent = s + ' col';
+        span.appendChild(opt);
+      });
+      span.value = String(Math.min(p.span, 4));
+      span.addEventListener('change', function () { p.span = intOf(span.value, 1); });
+      row.appendChild(span);
+
+      var topN = document.createElement('input');
+      topN.type = 'number';
+      topN.min = '0';
+      topN.max = '99';
+      topN.step = '1';
+      topN.value = String(p.topN);
+      topN.title = '0 = all categories';
+      topN.addEventListener('change', function () { p.topN = Math.max(0, intOf(topN.value, 0)); });
+      row.appendChild(topN);
+
+      var sort = document.createElement('select');
+      [['desc', 'Value ↓'], ['asc', 'Value ↑'], ['alpha', 'A→Z'], ['data', 'Data order']].forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = s[0];
+        opt.textContent = s[1];
+        sort.appendChild(opt);
+      });
+      sort.value = p.sort;
+      sort.addEventListener('change', function () { p.sort = sort.value; });
+      row.appendChild(sort);
+
+      wrap.appendChild(row);
+    });
+  };
+
+  DialogApp.prototype.buildTrendSplit = function (settings) {
+    var select = document.getElementById('f-trend-split');
+    select.innerHTML = '';
+    var optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.textContent = 'None (total vs budget)';
+    select.appendChild(optNone);
+    this.breakdownFields.forEach(function (f) {
+      var opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      select.appendChild(opt);
+    });
+    var saved = getSetting(settings, 'trendSplit');
+    if (saved && this.breakdownFields.indexOf(saved) !== -1) { select.value = saved; }
+  };
+
+  DialogApp.prototype.populateForm = function (settings) {
+    document.getElementById('f-title').value = getSetting(settings, 'titleOverride');
+    document.getElementById('f-kpi-word').value = getSetting(settings, 'kpiWord');
+    document.getElementById('f-hib').checked = boolOf(getSetting(settings, 'hib'));
+    document.getElementById('f-kpi-day-show').checked = boolOf(getSetting(settings, 'kpiDayShow'));
+    document.getElementById('f-kpi-mtd-show').checked = boolOf(getSetting(settings, 'kpiMtdShow'));
+    document.getElementById('f-kpi-ytd-show').checked = boolOf(getSetting(settings, 'kpiYtdShow'));
+    document.getElementById('f-kpi-day-label').value = getSetting(settings, 'kpiDayLabel');
+    document.getElementById('f-kpi-mtd-label').value = getSetting(settings, 'kpiMtdLabel');
+    document.getElementById('f-kpi-ytd-label').value = getSetting(settings, 'kpiYtdLabel');
+    document.getElementById('f-kpi-mtd-agg').value = getSetting(settings, 'kpiMtdAgg');
+    document.getElementById('f-kpi-ytd-agg').value = getSetting(settings, 'kpiYtdAgg');
+    document.getElementById('f-show-budget').checked = boolOf(getSetting(settings, 'showBudget'));
+    document.getElementById('f-show-py').checked = boolOf(getSetting(settings, 'showPY'));
+    document.getElementById('f-trend-show').checked = boolOf(getSetting(settings, 'trendShow'));
+    document.getElementById('f-trend-budget').checked = boolOf(getSetting(settings, 'trendBudget'));
+    document.getElementById('f-trend-zero').checked = boolOf(getSetting(settings, 'trendZero'));
+    document.getElementById('f-trend-topn').value = getSetting(settings, 'trendTopN');
+    document.getElementById('f-trend-window').value = getSetting(settings, 'trendWindow');
+    document.getElementById('f-trend-span').value = getSetting(settings, 'trendSpan');
+    document.getElementById('f-trend-title').value = getSetting(settings, 'trendTitle');
+    document.getElementById('f-prefix').value = getSetting(settings, 'prefix');
+    document.getElementById('f-suffix').value = getSetting(settings, 'suffix');
+    document.getElementById('f-scale').value = getSetting(settings, 'scale');
+    document.getElementById('f-decimals').value = getSetting(settings, 'decimals');
+    document.getElementById('f-thousands-sep').checked = boolOf(getSetting(settings, 'thousandsSep'));
+    document.getElementById('f-grid-cols').value = getSetting(settings, 'gridCols');
+    document.getElementById('f-panel-height').value = getSetting(settings, 'panelHeight');
+    document.getElementById('f-transparent').checked = boolOf(getSetting(settings, 'transparentBg'));
+    document.getElementById('f-page-bg').value = getSetting(settings, 'pageBg');
+    document.getElementById('f-value-color').value = getSetting(settings, 'valueColor');
+    document.getElementById('f-chart-color').value = getSetting(settings, 'chartColor');
+    document.getElementById('f-fav-text').value = getSetting(settings, 'favText');
+    document.getElementById('f-unfav-text').value = getSetting(settings, 'unfavText');
+  };
+
+  DialogApp.prototype.save = function () {
+    var roles = {};
+    this.measureFields.length > 0 && ROLES.forEach(function (role) {
+      var el = document.getElementById('role-' + role);
+      if (!el) { return; }
+      if (el.value === '__none__') { roles[role] = ''; }
+      else if (el.value !== '__auto__') { roles[role] = el.value; }
+    });
+
+    var values = {
+      titleOverride: document.getElementById('f-title').value,
+      kpiWord: document.getElementById('f-kpi-word').value,
+      hib: String(document.getElementById('f-hib').checked),
+      measureRoles: JSON.stringify(roles),
+      kpiDayShow: String(document.getElementById('f-kpi-day-show').checked),
+      kpiMtdShow: String(document.getElementById('f-kpi-mtd-show').checked),
+      kpiYtdShow: String(document.getElementById('f-kpi-ytd-show').checked),
+      kpiDayLabel: document.getElementById('f-kpi-day-label').value,
+      kpiMtdLabel: document.getElementById('f-kpi-mtd-label').value,
+      kpiYtdLabel: document.getElementById('f-kpi-ytd-label').value,
+      kpiMtdAgg: document.getElementById('f-kpi-mtd-agg').value,
+      kpiYtdAgg: document.getElementById('f-kpi-ytd-agg').value,
+      showBudget: String(document.getElementById('f-show-budget').checked),
+      showPY: String(document.getElementById('f-show-py').checked),
+      panels: JSON.stringify(this.panelRows),
+      trendShow: String(document.getElementById('f-trend-show').checked),
+      trendBudget: String(document.getElementById('f-trend-budget').checked),
+      trendZero: String(document.getElementById('f-trend-zero').checked),
+      trendSplit: document.getElementById('f-trend-split').value,
+      trendTopN: document.getElementById('f-trend-topn').value,
+      trendWindow: document.getElementById('f-trend-window').value,
+      trendSpan: document.getElementById('f-trend-span').value,
+      trendTitle: document.getElementById('f-trend-title').value,
+      prefix: document.getElementById('f-prefix').value,
+      suffix: document.getElementById('f-suffix').value,
+      scale: document.getElementById('f-scale').value,
+      decimals: document.getElementById('f-decimals').value,
+      thousandsSep: String(document.getElementById('f-thousands-sep').checked),
+      gridCols: document.getElementById('f-grid-cols').value,
+      panelHeight: document.getElementById('f-panel-height').value,
+      transparentBg: String(document.getElementById('f-transparent').checked),
+      pageBg: document.getElementById('f-page-bg').value,
+      valueColor: document.getElementById('f-value-color').value,
+      chartColor: document.getElementById('f-chart-color').value,
+      favText: document.getElementById('f-fav-text').value,
+      unfavText: document.getElementById('f-unfav-text').value
+    };
+    Object.keys(values).forEach(function (key) {
+      tableau.extensions.settings.set(key, values[key]);
+    });
+    tableau.extensions.settings.saveAsync().then(function () {
+      tableau.extensions.ui.closeDialog('saved');
+    }, function (err) {
+      showFatalError('Failed to save settings: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  // =========================================================================
+  // Boot
+  // =========================================================================
+  if (isDialog) {
+    new DialogApp().init();
+  } else {
+    new DashApp().init();
+  }
+})();
+</script>
+</body>
+</html>
