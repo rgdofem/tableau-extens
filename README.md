@@ -199,6 +199,28 @@ schema, so measures share one):
 Measure roles are auto-detected from names (budget/plan/target → Budget; PY/prior/last year →
 Prior Year) and can be reassigned in the settings dialog.
 
+### Budget grain (important when Budget is monthly-per-location)
+
+Census is captured per patient per day, but budget is typically **one number per month per
+location**, related to census on site + year + month. In a Tableau relationship that monthly
+figure is *repeated* on every breakdown row for the day (Modality × Phase × Drug × Payor …), so
+naively summing it multiplies the budget by the number of breakdown rows (e.g. a 35,028 budget
+shows as ~200K). The **Budget grain** setting handles this:
+
+- **De-duplicate** (default) — the extension takes *one* budget value per grain group per day
+  instead of summing. For a **single site**, leave "Budget varies by" empty → one value per day.
+  For an **all-sites** view where Location is on the Breakdowns tile, check **Location** so each
+  location contributes once and they sum across locations.
+- **Add it up** — only if your budget is genuinely stored at the row grain (uncommon for census).
+
+Budget then uses the same MTD/YTD aggregation as census; with the default **ADC (average)** each
+day carries the monthly target and the average over the window returns that target.
+
+### Trend position
+
+The trend panel can sit **above the breakdown panels** (a middle layer between the KPI cards and
+the breakdown grid) or **below** them — set it under Trend panel → Position.
+
 ## MTD / YTD / prior-year windows
 
 The extension computes the windows itself from the Date field: Day = latest date with data,

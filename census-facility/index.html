@@ -310,6 +310,20 @@
   #dialog .row { display: flex; gap: 10px; }
   #dialog .row > .field { flex: 1; }
 
+  #dialog .check-list {
+    max-height: 110px;
+    overflow-y: auto;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+
+  #dialog .check-list label {
+    display: block;
+    font-weight: 400;
+    margin-bottom: 2px;
+  }
+
   #dialog .role-row {
     display: flex;
     align-items: center;
@@ -403,6 +417,7 @@
   <h1 id="dash-title" class="hidden"></h1>
   <div id="empty-state" class="hidden"></div>
   <div id="kpi-row"></div>
+  <div id="trend-row"></div>
   <div id="panel-grid"></div>
 </div>
 
@@ -474,6 +489,22 @@
   </fieldset>
 
   <fieldset>
+    <legend>Budget grain</legend>
+    <div class="field">
+      <label for="f-budget-grain">Budget is stored at</label>
+      <select id="f-budget-grain">
+        <option value="additive">Row grain — add it up (default)</option>
+        <option value="dedupe">Coarser grain (e.g. monthly per location) — de-duplicate</option>
+      </select>
+    </div>
+    <div class="field" id="budget-grain-dims-wrap">
+      <label>Budget varies by (grain dimensions)</label>
+      <div id="budget-grain-dims" class="check-list"></div>
+      <div class="note">Only used when de-duplicating. Because a monthly-per-location budget is repeated across every breakdown row for a day, summing it overcounts. Check the dimension(s) the budget is actually unique by — e.g. Location — and the extension takes one value per group per day instead of summing. For a single site, leave all unchecked (one budget per day).</div>
+    </div>
+  </fieldset>
+
+  <fieldset>
     <legend>Breakdown panels</legend>
     <div id="panels-none" class="field note hidden">Drop dimensions (Phase, ALOS bucket, Drug Type, Payor, Modality, …) on the Breakdowns tile, then reopen this dialog to arrange them.</div>
     <div id="panel-cfg-wrap">
@@ -526,11 +557,18 @@
         </select>
       </div>
       <div class="field">
+        <label for="f-trend-position">Position</label>
+        <select id="f-trend-position">
+          <option value="above">Above breakdowns (middle layer)</option>
+          <option value="below">Below breakdowns (bottom)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="f-trend-title">Title override</label>
         <input type="text" id="f-trend-title" placeholder="blank = auto">
       </div>
     </div>
-    <div class="note">Splitting by a dimension across all sites can get messy — cap it with Max lines, or leave the split on “None” for a single clean actual-vs-budget line.</div>
+    <div class="note">Splitting by a dimension across all sites can get messy — cap it with Max lines, or leave the split on “None” for a single clean actual-vs-budget line. Position puts the trend between the KPI cards and the breakdown panels, or below them.</div>
   </fieldset>
 
   <fieldset>
@@ -651,6 +689,8 @@
     kpiYtdAgg: 'avg',
     showBudget: 'true',
     showPY: 'true',
+    budgetGrain: 'dedupe',
+    budgetGrainDims: '[]',
     panels: '[]',
     trendShow: 'true',
     trendBudget: 'true',
@@ -659,6 +699,7 @@
     trendTopN: '8',
     trendWindow: 'all',
     trendSpan: '3',
+    trendPosition: 'below',
     trendTitle: '',
     prefix: '',
     suffix: '',
@@ -732,6 +773,8 @@
       kpiYtdAgg: getSetting(settings, 'kpiYtdAgg'),
       showBudget: boolOf(getSetting(settings, 'showBudget')),
       showPY: boolOf(getSetting(settings, 'showPY')),
+      budgetGrain: getSetting(settings, 'budgetGrain'),
+      budgetGrainDims: parseJsonArray(getSetting(settings, 'budgetGrainDims')),
       panels: parseJsonArray(getSetting(settings, 'panels')),
       trendShow: boolOf(getSetting(settings, 'trendShow')),
       trendBudget: boolOf(getSetting(settings, 'trendBudget')),
@@ -740,6 +783,7 @@
       trendTopN: Math.max(1, intOf(getSetting(settings, 'trendTopN'), 8)),
       trendWindow: getSetting(settings, 'trendWindow'),
       trendSpan: intOf(getSetting(settings, 'trendSpan'), 3),
+      trendPosition: getSetting(settings, 'trendPosition'),
       trendTitle: getSetting(settings, 'trendTitle'),
       prefix: getSetting(settings, 'prefix'),
       suffix: getSetting(settings, 'suffix'),
@@ -1062,24 +1106,55 @@
 
   // ---- data shaping ----
 
-  // Per-date totals: dateMs -> {a, aAny, b, bAny, p, pAny}
-  DashApp.prototype.buildDailyTotals = function (dateField, roleMap) {
+  // Per-date totals: dateMs -> {a, aAny, b, bAny, p, pAny}.
+  // Census (a) and prior-year (p) are additive across rows. Budget (b) can be
+  // at a coarser grain than the row grain (e.g. one monthly figure per
+  // location, repeated across every breakdown row for the day). Summing that
+  // overcounts, so in 'dedupe' mode we group each day's rows by the budget
+  // grain dimensions and take one value per group, then sum across groups.
+  DashApp.prototype.buildDailyTotals = function (dateField, roleMap, cfg) {
     var daily = {};
     var actualF = roleMap.actual, budgetF = roleMap.budget, pyF = roleMap.py;
+    var dedupeBudget = !!budgetF && cfg && cfg.budgetGrain === 'dedupe';
+    var grainDims = dedupeBudget ? (cfg.budgetGrainDims || []) : [];
     this.rows.forEach(function (row) {
       var dv = row[dateField];
       if (isNullValue(dv)) { return; }
       var ms = parseDateMs(dv.value);
       if (ms === null) { return; }
       var d = daily[ms];
-      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false }; }
+      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false, bGroups: null }; }
       var a = actualF ? numOf(row[actualF]) : NaN;
       if (!isNaN(a)) { d.a += a; d.aAny = true; }
-      var b = budgetF ? numOf(row[budgetF]) : NaN;
-      if (!isNaN(b)) { d.b += b; d.bAny = true; }
+      if (budgetF) {
+        var b = numOf(row[budgetF]);
+        if (!isNaN(b)) {
+          if (dedupeBudget) {
+            if (!d.bGroups) { d.bGroups = {}; }
+            var key = grainDims.length === 0 ? '' : grainDims.map(function (g) {
+              var gv = row[g];
+              return isNullValue(gv) ? '' : gv.formattedValue;
+            }).join('');
+            // Budget is constant within a grain group; keep the max to be safe.
+            if (!(key in d.bGroups) || b > d.bGroups[key]) { d.bGroups[key] = b; }
+            d.bAny = true;
+          } else {
+            d.b += b; d.bAny = true;
+          }
+        }
+      }
       var p = pyF ? numOf(row[pyF]) : NaN;
       if (!isNaN(p)) { d.p += p; d.pAny = true; }
     });
+    if (dedupeBudget) {
+      Object.keys(daily).forEach(function (k) {
+        var d = daily[k];
+        if (!d.bGroups) { return; }
+        var sum = 0;
+        Object.keys(d.bGroups).forEach(function (g) { sum += d.bGroups[g]; });
+        d.b = sum;
+      });
+    }
     return daily;
   };
 
@@ -1106,6 +1181,7 @@
     var dash = document.getElementById('dash');
     var emptyEl = document.getElementById('empty-state');
     var kpiRow = document.getElementById('kpi-row');
+    var trendRow = document.getElementById('trend-row');
     var grid = document.getElementById('panel-grid');
     var titleEl = document.getElementById('dash-title');
 
@@ -1119,6 +1195,7 @@
     var roleMap = resolveMeasureRoles(measureFields, cfg.measureRoles);
 
     kpiRow.innerHTML = '';
+    trendRow.innerHTML = '';
     grid.innerHTML = '';
 
     if (!dateField || !roleMap.actual || this.rows.length === 0) {
@@ -1128,7 +1205,7 @@
     }
     emptyEl.classList.add('hidden');
 
-    var daily = this.buildDailyTotals(dateField, roleMap);
+    var daily = this.buildDailyTotals(dateField, roleMap, cfg);
     var keys = Object.keys(daily).map(Number).sort(function (a, b) { return a - b; });
     var anchorMs = null;
     for (var i = keys.length - 1; i >= 0; i--) {
@@ -1141,7 +1218,19 @@
     }
 
     this.renderKpis(kpiRow, cfg, daily, keys, anchorMs, roleMap);
-    this.renderPanels(grid, cfg, dateField, roleMap, daily, keys, anchorMs);
+    this.renderPanels(grid, cfg, dateField, roleMap, anchorMs);
+    this.renderTrendRow(trendRow, cfg, dateField, roleMap, daily, keys, anchorMs);
+
+    // Position the trend row relative to the breakdown grid per settings.
+    if (cfg.trendShow) {
+      if (cfg.trendPosition === 'above') {
+        dash.insertBefore(trendRow, grid);
+        trendRow.style.margin = '0 0 10px 0';
+      } else {
+        dash.insertBefore(trendRow, grid.nextSibling);
+        trendRow.style.margin = '10px 0 0 0';
+      }
+    }
   };
 
   DashApp.prototype.renderKpis = function (kpiRow, cfg, daily, keys, anchorMs, roleMap) {
@@ -1266,8 +1355,7 @@
     return out;
   }
 
-  DashApp.prototype.renderPanels = function (grid, cfg, dateField, roleMap, daily, keys, anchorMs) {
-    var self = this;
+  DashApp.prototype.renderPanels = function (grid, cfg, dateField, roleMap, anchorMs) {
     var mappedDims = this.fieldNamesFor(ENC.BREAKDOWNS);
     var panels = reconcilePanels(cfg.panels, mappedDims);
 
@@ -1313,41 +1401,53 @@
         renderPie(body, pieItems, cfg, p.chart === 'donut');
       }
     });
+  };
 
-    if (cfg.trendShow) {
-      var panel = document.createElement('div');
-      panel.className = 'panel';
-      panel.style.gridColumn = 'span ' + Math.min(cfg.trendSpan, cfg.gridCols);
-      var title = document.createElement('div');
-      title.className = 'panel-title';
-      var split = cfg.trendSplit && mappedDims.indexOf(cfg.trendSplit) !== -1 ? cfg.trendSplit : null;
-      title.textContent = cfg.trendTitle ||
-        (cfg.kpiWord + ' Trend' + (split ? ' by ' + split : ' vs Budget'));
-      panel.appendChild(title);
-      var body = document.createElement('div');
-      body.className = 'panel-body';
-      body.style.height = cfg.panelHeight + 'px';
-      panel.appendChild(body);
-      grid.appendChild(body.parentNode);
+  // The trend lives in its own row (#trend-row) so it can be positioned
+  // above or below the breakdown grid. It is still a grid so the width
+  // setting (span in grid columns) keeps working.
+  DashApp.prototype.renderTrendRow = function (trendRow, cfg, dateField, roleMap, daily, keys, anchorMs) {
+    if (!cfg.trendShow) {
+      trendRow.style.display = 'none';
+      return;
+    }
+    trendRow.style.display = 'grid';
+    trendRow.style.gap = '10px';
+    trendRow.style.gridTemplateColumns = 'repeat(' + cfg.gridCols + ', minmax(0, 1fr))';
 
-      var winStart = trendWindowStart(cfg.trendWindow, anchorMs);
-      if (split) {
-        var series = self.buildSplitSeries(dateField, split, roleMap.actual, winStart, anchorMs, cfg.trendTopN, cfg);
-        renderTrend(body, series, null, cfg);
-      } else {
-        var actualPts = [], budgetPts = [];
-        keys.forEach(function (k) {
-          if (k < winStart || k > anchorMs) { return; }
-          var d = daily[k];
-          if (d.aAny) { actualPts.push([k, d.a]); }
-          if (d.bAny) { budgetPts.push([k, d.b]); }
-        });
-        var series = [{ label: 'Actual', color: cfg.valueColor, points: actualPts }];
-        var area = (cfg.trendBudget && budgetPts.length > 1)
-          ? { label: 'Budget', points: budgetPts, fill: lighten(cfg.chartColor, 0.62) }
-          : null;
-        renderTrend(body, series, area, cfg);
-      }
+    var mappedDims = this.fieldNamesFor(ENC.BREAKDOWNS);
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.style.gridColumn = 'span ' + Math.min(cfg.trendSpan, cfg.gridCols);
+    var title = document.createElement('div');
+    title.className = 'panel-title';
+    var split = cfg.trendSplit && mappedDims.indexOf(cfg.trendSplit) !== -1 ? cfg.trendSplit : null;
+    title.textContent = cfg.trendTitle ||
+      (cfg.kpiWord + ' Trend' + (split ? ' by ' + split : ' vs Budget'));
+    panel.appendChild(title);
+    var body = document.createElement('div');
+    body.className = 'panel-body';
+    body.style.height = cfg.panelHeight + 'px';
+    panel.appendChild(body);
+    trendRow.appendChild(panel);
+
+    var winStart = trendWindowStart(cfg.trendWindow, anchorMs);
+    if (split) {
+      var series = this.buildSplitSeries(dateField, split, roleMap.actual, winStart, anchorMs, cfg.trendTopN, cfg);
+      renderTrend(body, series, null, cfg);
+    } else {
+      var actualPts = [], budgetPts = [];
+      keys.forEach(function (k) {
+        if (k < winStart || k > anchorMs) { return; }
+        var d = daily[k];
+        if (d.aAny) { actualPts.push([k, d.a]); }
+        if (d.bAny) { budgetPts.push([k, d.b]); }
+      });
+      var series = [{ label: 'Actual', color: cfg.valueColor, points: actualPts }];
+      var area = (cfg.trendBudget && budgetPts.length > 1)
+        ? { label: 'Budget', points: budgetPts, fill: lighten(cfg.chartColor, 0.62) }
+        : null;
+      renderTrend(body, series, area, cfg);
     }
   };
 
@@ -1757,6 +1857,7 @@
       document.getElementById('dialog').style.display = 'block';
       var settings = tableau.extensions.settings.getAll();
       self.buildRoleRows(settings);
+      self.buildBudgetGrainDims(settings);
       self.buildPanelRows(settings);
       self.buildTrendSplit(settings);
       self.populateForm(settings);
@@ -1922,6 +2023,27 @@
     });
   };
 
+  DialogApp.prototype.buildBudgetGrainDims = function (settings) {
+    var wrap = document.getElementById('budget-grain-dims');
+    wrap.innerHTML = '';
+    var saved = parseJsonArray(getSetting(settings, 'budgetGrainDims'));
+    if (this.breakdownFields.length === 0) {
+      wrap.innerHTML = '<div class="note">No breakdown dimensions on the worksheet — budget de-duplicates to one value per day, correct for a single site.</div>';
+      return;
+    }
+    this.breakdownFields.forEach(function (f, i) {
+      var label = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'budget-grain-' + i;
+      cb.value = f;
+      cb.checked = saved.indexOf(f) !== -1;
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + f));
+      wrap.appendChild(label);
+    });
+  };
+
   DialogApp.prototype.buildTrendSplit = function (settings) {
     var select = document.getElementById('f-trend-split');
     select.innerHTML = '';
@@ -1953,12 +2075,14 @@
     document.getElementById('f-kpi-ytd-agg').value = getSetting(settings, 'kpiYtdAgg');
     document.getElementById('f-show-budget').checked = boolOf(getSetting(settings, 'showBudget'));
     document.getElementById('f-show-py').checked = boolOf(getSetting(settings, 'showPY'));
+    document.getElementById('f-budget-grain').value = getSetting(settings, 'budgetGrain');
     document.getElementById('f-trend-show').checked = boolOf(getSetting(settings, 'trendShow'));
     document.getElementById('f-trend-budget').checked = boolOf(getSetting(settings, 'trendBudget'));
     document.getElementById('f-trend-zero').checked = boolOf(getSetting(settings, 'trendZero'));
     document.getElementById('f-trend-topn').value = getSetting(settings, 'trendTopN');
     document.getElementById('f-trend-window').value = getSetting(settings, 'trendWindow');
     document.getElementById('f-trend-span').value = getSetting(settings, 'trendSpan');
+    document.getElementById('f-trend-position').value = getSetting(settings, 'trendPosition');
     document.getElementById('f-trend-title').value = getSetting(settings, 'trendTitle');
     document.getElementById('f-prefix').value = getSetting(settings, 'prefix');
     document.getElementById('f-suffix').value = getSetting(settings, 'suffix');
@@ -1984,6 +2108,12 @@
       else if (el.value !== '__auto__') { roles[role] = el.value; }
     });
 
+    var grainDims = [];
+    this.breakdownFields.forEach(function (f, i) {
+      var cb = document.getElementById('budget-grain-' + i);
+      if (cb && cb.checked) { grainDims.push(f); }
+    });
+
     var values = {
       titleOverride: document.getElementById('f-title').value,
       kpiWord: document.getElementById('f-kpi-word').value,
@@ -1999,6 +2129,8 @@
       kpiYtdAgg: document.getElementById('f-kpi-ytd-agg').value,
       showBudget: String(document.getElementById('f-show-budget').checked),
       showPY: String(document.getElementById('f-show-py').checked),
+      budgetGrain: document.getElementById('f-budget-grain').value,
+      budgetGrainDims: JSON.stringify(grainDims),
       panels: JSON.stringify(this.panelRows),
       trendShow: String(document.getElementById('f-trend-show').checked),
       trendBudget: String(document.getElementById('f-trend-budget').checked),
@@ -2007,6 +2139,7 @@
       trendTopN: document.getElementById('f-trend-topn').value,
       trendWindow: document.getElementById('f-trend-window').value,
       trendSpan: document.getElementById('f-trend-span').value,
+      trendPosition: document.getElementById('f-trend-position').value,
       trendTitle: document.getElementById('f-trend-title').value,
       prefix: document.getElementById('f-prefix').value,
       suffix: document.getElementById('f-suffix').value,
