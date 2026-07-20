@@ -20,7 +20,9 @@
     color: var(--text-color);
   }
 
-  body { overflow: auto; }
+  /* Fixed-slide fit: the dashboard fills the viewport and the crosstab
+     scrolls internally, so the page itself never scrolls. */
+  body { overflow: hidden; }
 
   #error-banner {
     position: fixed;
@@ -41,9 +43,27 @@
   /* -------- Dashboard view -------- */
   #dash {
     box-sizing: border-box;
-    min-height: 100%;
+    height: 100%;
     padding: 8px;
     position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Rows above the crosstab keep their natural height; the crosstab row
+     takes the remaining space and scrolls inside it. */
+  #kpi-row, #mid-row, #dash-title, #empty-state { flex: 0 0 auto; }
+
+  #xt-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #xt-row .panel {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   #gear {
@@ -251,7 +271,11 @@
   }
 
   /* -------- Crosstab -------- */
-  #xt-body { overflow: auto; }
+  #xt-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
 
   #xt-body table {
     width: 100%;
@@ -384,6 +408,22 @@
 
   #dialog .role-row > label { flex: 0 0 90px; margin: 0; }
   #dialog .role-row > select { flex: 1; }
+
+  .xt-lbl-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+
+  .xt-lbl-row .xt-lbl-default {
+    font-size: 12px;
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   .kpi-cfg-head, .kpi-cfg-row {
     display: grid;
@@ -663,6 +703,11 @@
       <label for="f-xt-title">Title override</label>
       <input type="text" id="f-xt-title" placeholder="blank = auto">
     </div>
+    <div class="field">
+      <label>Column headers</label>
+      <div id="xt-label-rows"></div>
+      <div class="note">Rename any column header. Leave a box blank to keep the default. Labels stick to the field, so they survive reordering.</div>
+    </div>
     <div class="note">Every column header is click-sortable in the dashboard; this only sets the initial sort. The crosstab snapshots the latest date.</div>
   </fieldset>
 
@@ -796,6 +841,7 @@
     xtSortDir: 'asc',
     xtTotals: 'false',
     xtTitle: '',
+    xtLabels: '{}',
     prefix: '',
     suffix: '',
     scale: 'none',
@@ -890,6 +936,7 @@
       xtSortDir: getSetting(settings, 'xtSortDir'),
       xtTotals: boolOf(getSetting(settings, 'xtTotals')),
       xtTitle: getSetting(settings, 'xtTitle'),
+      xtLabels: parseJsonMap(getSetting(settings, 'xtLabels')),
       prefix: getSetting(settings, 'prefix'),
       suffix: getSetting(settings, 'suffix'),
       scale: getSetting(settings, 'scale'),
@@ -1678,23 +1725,30 @@
       return resolveExtraFmt(f, cfg.extrasFmt, mx);
     });
 
+    // Header label override, keyed by field name (dims/extras) or a fixed
+    // role key (actual/budget/variance/varpct). Blank => keep the default.
+    var labelFor = function (key, def) {
+      var v = cfg.xtLabels[key];
+      return (v !== undefined && v !== null && String(v).trim() !== '') ? v : def;
+    };
+
     // Column model: key, label, kind, getter
     var columns = [];
     rowFields.forEach(function (f, i) {
-      columns.push({ key: '__dim' + i + '__', label: f, dim: true, get: function (r) { return r.labels[i]; } });
+      columns.push({ key: '__dim' + i + '__', label: labelFor(f, f), dim: true, get: function (r) { return r.labels[i]; } });
     });
-    columns.push({ key: 'actual', label: cfg.kpiWord, get: function (r) { return r.actual; } });
+    columns.push({ key: 'actual', label: labelFor('actual', cfg.kpiWord), get: function (r) { return r.actual; } });
     if (cfg.xtBudget && roleMap.budget) {
-      columns.push({ key: 'budget', label: 'Budget', get: function (r) { return r.budget; } });
+      columns.push({ key: 'budget', label: labelFor('budget', 'Budget'), get: function (r) { return r.budget; } });
     }
     if (cfg.xtVariance && roleMap.budget) {
-      columns.push({ key: 'variance', label: 'Variance', variance: true, get: function (r) { return r.variance; } });
+      columns.push({ key: 'variance', label: labelFor('variance', 'Variance'), variance: true, get: function (r) { return r.variance; } });
     }
     if (cfg.xtVarPct && roleMap.budget) {
-      columns.push({ key: 'varpct', label: 'Var %', varPct: true, get: function (r) { return r.varPct; } });
+      columns.push({ key: 'varpct', label: labelFor('varpct', 'Var %'), varPct: true, get: function (r) { return r.varPct; } });
     }
     roleMap.extras.forEach(function (f, i) {
-      columns.push({ key: '__extra' + i + '__', label: f, extra: i, get: function (r) { return r.extras[i]; } });
+      columns.push({ key: '__extra' + i + '__', label: labelFor(f, f), extra: i, get: function (r) { return r.extras[i]; } });
     });
 
     var sort = this.sortState || { key: cfg.xtSortCol === '__dim0__' ? '__dim0__' : cfg.xtSortCol, dir: cfg.xtSortDir };
@@ -2017,6 +2071,7 @@
       self.buildExtraRows(settings);
       self.buildBudgetGrainDims(settings);
       self.buildVarDim(settings);
+      self.buildXtLabels(settings);
       self.populateForm(settings);
 
       document.getElementById('btn-cancel').addEventListener('click', function () {
@@ -2137,6 +2192,46 @@
     });
   };
 
+  // One rename box per crosstab column. Columns are keyed by field name
+  // (dimensions and extra measures) or a fixed role key; the order mirrors
+  // renderCrosstab. Keys are stored on this.xtLabelDefs so save() can read
+  // them back by index (field names aren't safe as element ids).
+  DialogApp.prototype.buildXtLabels = function (settings) {
+    var wrap = document.getElementById('xt-label-rows');
+    wrap.innerHTML = '';
+    var kpiWord = getSetting(settings, 'kpiWord') || 'Census';
+    var saved = parseJsonMap(getSetting(settings, 'xtLabels'));
+    var defs = [];
+    this.rowFields.forEach(function (f) { defs.push({ key: f, def: f }); });
+    defs.push({ key: 'actual', def: kpiWord });
+    defs.push({ key: 'budget', def: 'Budget' });
+    defs.push({ key: 'variance', def: 'Variance' });
+    defs.push({ key: 'varpct', def: 'Var %' });
+    var roleMap = resolveMeasureRoles(this.measureFields, getSetting(settings, 'measureRoles'));
+    roleMap.extras.forEach(function (f) { defs.push({ key: f, def: f }); });
+    this.xtLabelDefs = defs;
+    if (defs.length === 0) {
+      wrap.innerHTML = '<div class="note">Drop dimensions/measures first.</div>';
+      return;
+    }
+    defs.forEach(function (d, i) {
+      var row = document.createElement('div');
+      row.className = 'xt-lbl-row';
+      var name = document.createElement('span');
+      name.className = 'xt-lbl-default';
+      name.textContent = d.def;
+      name.title = d.def;
+      row.appendChild(name);
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.id = 'xt-lbl-' + i;
+      inp.placeholder = d.def;
+      if (saved[d.key] !== undefined && saved[d.key] !== null) { inp.value = saved[d.key]; }
+      row.appendChild(inp);
+      wrap.appendChild(row);
+    });
+  };
+
   DialogApp.prototype.buildVarDim = function (settings) {
     var select = document.getElementById('f-var-dim');
     select.innerHTML = '';
@@ -2232,6 +2327,12 @@
       if (cb && cb.checked) { grainDims.push(f); }
     });
 
+    var xtLabels = {};
+    (this.xtLabelDefs || []).forEach(function (d, i) {
+      var inp = document.getElementById('xt-lbl-' + i);
+      if (inp && inp.value.trim() !== '') { xtLabels[d.key] = inp.value; }
+    });
+
     var values = {
       titleOverride: document.getElementById('f-title').value,
       kpiWord: document.getElementById('f-kpi-word').value,
@@ -2269,6 +2370,7 @@
       xtSortDir: document.getElementById('f-xt-sort-dir').value,
       xtTotals: String(document.getElementById('f-xt-totals').checked),
       xtTitle: document.getElementById('f-xt-title').value,
+      xtLabels: JSON.stringify(xtLabels),
       prefix: document.getElementById('f-prefix').value,
       suffix: document.getElementById('f-suffix').value,
       scale: document.getElementById('f-scale').value,

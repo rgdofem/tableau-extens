@@ -272,8 +272,17 @@ https://rgdofem.github.io/tableau-extens/census-regional/index.html
   Census, Budget, favorability-colored Variance (and optional Var %), then **every measure not
   assigned a role as an extra column** — payor mix %, ALOS, whatever you drop on the tile.
   Percent-looking fields format automatically (0–1 ratios are scaled to %); overrides per field
-  in settings. Every column header is click-sortable; the default sort and an optional totals
-  row are configurable.
+  in settings. Every column header is click-sortable and **renamable** (Crosstab → Column
+  headers); the default sort and an optional totals row are configurable. The crosstab **scrolls
+  internally** (sticky header) so the dashboard fits a fixed slide without the page scrolling.
+
+### Fitting a slide (e.g. 1600×900)
+
+The regional dashboard fills its Tableau zone as a fixed-height column: the KPI row, variance/
+trend row, and crosstab stack, and the crosstab takes the remaining height and scrolls inside
+itself (vertically for extra rows, horizontally for extra columns). Set your Tableau dashboard to
+a fixed size (e.g. 1600×900) and the layout fits with no outer scrollbar. Keep the middle-row
+height (Trend chart → Middle row height) modest so the crosstab keeps enough room.
 
 ## Worksheet setup
 
