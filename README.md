@@ -177,10 +177,15 @@ https://rgdofem.github.io/tableau-extens/census-facility/index.html
 - **KPI row** — Day (latest date), MTD, and YTD cards. Each shows the census figure, a
   red/green budget variance line (`(966) ▼ below 35,028 budget` + `(3%) unfavorable`), and a
   **prior-year comparison line** (`vs PY 33,096 ▲ 2.9%`), also favorability-colored.
+- **KPI row** — the value sits on the left and the budget/prior-year comparison lines are
+  right-aligned beside it (rather than stacked underneath), so the cards fill their width
+  instead of leaving the right half blank; a card with no comparison lines centers its value.
 - **Breakdown panels** — one chart per dimension on the Breakdowns tile (Phase, ALOS bucket,
   Drug Type, Payor, Modality, …), snapshotted at the latest date. Per panel you choose chart
-  type (horizontal bars / columns / pie / donut), order (↑/↓ arrows), grid width, Top N, and
-  sort — so *you* decide which dimension goes where.
+  type (horizontal bars / columns / pie / donut), order (↑/↓ arrows), grid width, Top N, sort,
+  and how the tail beyond Top N is handled — **Rest**: collapse it into one "All others" item
+  (which always sits at the bottom) showing its **Sum** or **Average**, or **Hide** it. Pies
+  always sum the rest so the proportions stay meaningful.
 - **Trend panel** — daily total actual line with a light budget area, or split into one line
   per member of a chosen dimension, capped at Top-N lines by current census so the all-sites
   view stays readable (the messy-spaghetti fix). Date window: all / YTD / trailing 12 / 24 months.

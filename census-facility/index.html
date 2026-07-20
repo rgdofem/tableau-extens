@@ -120,35 +120,51 @@
     margin-bottom: 10px;
   }
 
+  /* Value on the left, comparison lines stacked on the right, vertically
+     centered — fills the tile width instead of leaving the right half blank. */
   .kpi-body {
-    padding: 10px 14px 12px 14px;
+    flex: 1 1 auto;
+    padding: 10px 16px;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
   }
 
   .kpi-value {
-    font-size: 30px;
+    font-size: 34px;
     font-weight: 700;
-    line-height: 1.15;
+    line-height: 1.1;
     font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+
+  .kpi-compare {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    text-align: right;
   }
 
   .kpi-line {
     font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.25;
   }
 
   .kpi-line .tri { font-size: 9px; }
 
   .kpi-line.muted { color: var(--label-color); font-weight: 400; }
+
+  /* When there are no comparison lines, center the value instead. */
+  .kpi-body.value-only { justify-content: center; }
+  .kpi-body.value-only .kpi-value { font-size: 40px; }
 
   /* -------- Panels grid -------- */
   #panel-grid {
@@ -348,8 +364,8 @@
   /* Panel config rows */
   .panel-cfg-head, .panel-cfg-row {
     display: grid;
-    grid-template-columns: 44px 24px 1fr 96px 62px 64px 92px;
-    gap: 6px;
+    grid-template-columns: 38px 20px minmax(50px, 1fr) 84px 46px 44px 72px 66px;
+    gap: 5px;
     align-items: center;
     margin-bottom: 5px;
   }
@@ -508,10 +524,10 @@
     <legend>Breakdown panels</legend>
     <div id="panels-none" class="field note hidden">Drop dimensions (Phase, ALOS bucket, Drug Type, Payor, Modality, …) on the Breakdowns tile, then reopen this dialog to arrange them.</div>
     <div id="panel-cfg-wrap">
-      <div class="panel-cfg-head"><span>Order</span><span></span><span>Dimension</span><span>Chart</span><span>Width</span><span>Top N</span><span>Sort</span></div>
+      <div class="panel-cfg-head"><span>Order</span><span></span><span>Dimension</span><span>Chart</span><span>Width</span><span>Top N</span><span>Sort</span><span>Rest</span></div>
       <div id="panel-rows"></div>
     </div>
-    <div class="note">Each checked dimension gets a chart panel, in this order, snapshotted at the latest date. Top N = 0 shows every category (pies always lump the tail into “Other”).</div>
+    <div class="note">Each checked dimension gets a chart panel, in this order, snapshotted at the latest date. Top N = 0 shows every category. When Top N is set, the remaining categories collapse into one “All others” item that sits at the bottom — Rest controls whether it shows their Sum, their Average, or is hidden. (Pies always sum the rest so proportions stay meaningful.)</div>
   </fieldset>
 
   <fieldset>
@@ -1275,6 +1291,9 @@
       valueEl.textContent = formatNumber(actual, cfg);
       body.appendChild(valueEl);
 
+      var compare = document.createElement('div');
+      compare.className = 'kpi-compare';
+
       if (cfg.showBudget && budget !== null && actual !== null) {
         var delta = actual - budget;
         var favorable = (delta >= 0) === cfg.hib;
@@ -1284,7 +1303,6 @@
         var line1 = document.createElement('div');
         line1.className = 'kpi-line';
         line1.style.color = color;
-        line1.innerHTML = '';
         line1.appendChild(document.createTextNode(formatNumber(delta, cfg) + ' '));
         var tri = document.createElement('span');
         tri.className = 'tri';
@@ -1292,14 +1310,14 @@
         line1.appendChild(tri);
         line1.appendChild(document.createTextNode(' ' + (delta >= 0 ? 'above' : 'below') + ' ' +
           formatNumber(budget, cfg) + ' budget'));
-        body.appendChild(line1);
+        compare.appendChild(line1);
 
         var line2 = document.createElement('div');
         line2.className = 'kpi-line';
         line2.style.color = color;
         var pctStr = pct === null ? '–' : pct.toFixed(pct >= 10 ? 0 : 1) + '%';
         line2.textContent = (delta < 0 ? '(' + pctStr + ')' : pctStr) + ' ' + (favorable ? 'favorable' : 'unfavorable');
-        body.appendChild(line2);
+        compare.appendChild(line2);
       }
 
       if (cfg.showPY) {
@@ -1321,7 +1339,13 @@
           pyLine.appendChild(document.createTextNode(' ' +
             (pyPct === null ? '–' : pyPct.toFixed(pyPct >= 10 ? 0 : 1) + '%')));
         }
-        body.appendChild(pyLine);
+        compare.appendChild(pyLine);
+      }
+
+      if (compare.childNodes.length > 0) {
+        body.appendChild(compare);
+      } else {
+        body.classList.add('value-only');
       }
 
       panel.appendChild(body);
@@ -1343,13 +1367,14 @@
           chart: CHART_TYPES.some(function (c) { return c.value === p.chart; }) ? p.chart : 'bars',
           span: Math.max(1, intOf(p.span, 1)),
           topN: Math.max(0, intOf(p.topN, 0)),
-          sort: ['desc', 'asc', 'alpha', 'data'].indexOf(p.sort) !== -1 ? p.sort : 'desc'
+          sort: ['desc', 'asc', 'alpha', 'data'].indexOf(p.sort) !== -1 ? p.sort : 'desc',
+          other: ['sum', 'avg', 'hide'].indexOf(p.other) !== -1 ? p.other : 'sum'
         });
       }
     });
     mappedDims.forEach(function (dim) {
       if (!seen[dim]) {
-        out.push({ dim: dim, show: true, chart: 'bars', span: 1, topN: 0, sort: 'desc' });
+        out.push({ dim: dim, show: true, chart: 'bars', span: 1, topN: 0, sort: 'desc', other: 'sum' });
       }
     });
     return out;
@@ -1391,13 +1416,16 @@
       if (p.chart === 'bars') {
         body.classList.add('scroll-y');
         body.style.height = cfg.panelHeight + 'px';
-        renderBars(body, limitItems(items, p.topN, false), cfg);
+        renderBars(body, limitItems(items, p.topN, p.other), cfg);
       } else if (p.chart === 'columns') {
         body.style.height = cfg.panelHeight + 'px';
-        renderColumns(body, limitItems(items, p.topN, false), cfg);
+        renderColumns(body, limitItems(items, p.topN, p.other), cfg);
       } else {
+        // Pie/donut are part-to-whole, so an averaged "others" slice would
+        // distort the proportions — collapse the tail as a sum there.
         body.style.height = cfg.panelHeight + 'px';
-        var pieItems = limitItems(items, p.topN > 0 ? p.topN : 8, true);
+        var pieOther = p.other === 'avg' ? 'sum' : p.other;
+        var pieItems = limitItems(items, p.topN > 0 ? p.topN : 8, pieOther);
         renderPie(body, pieItems, cfg, p.chart === 'donut');
       }
     });
@@ -1520,16 +1548,23 @@
     }
   }
 
-  // topN = 0 keeps everything. When lumping, the tail becomes one "Other".
-  function limitItems(items, topN, lumpOther) {
+  // topN = 0 keeps everything. Otherwise the tail beyond topN is either
+  // dropped ('hide') or collapsed into one "All others" item that always
+  // sits last (bottom of the chart). otherMode 'sum' totals the tail;
+  // 'avg' shows the mean of the tail members.
+  function limitItems(items, topN, otherMode) {
     if (topN <= 0 || items.length <= topN) { return items; }
     var kept = items.slice(0, topN);
-    if (lumpOther) {
-      var rest = 0;
-      for (var i = topN; i < items.length; i++) { rest += items[i].value; }
-      if (rest > 0) { kept = kept.concat([{ label: 'Other', value: rest, isOther: true }]); }
-    }
-    return kept;
+    if (otherMode === 'hide') { return kept; }
+    var rest = items.slice(topN);
+    if (rest.length === 0) { return kept; }
+    var sum = 0;
+    rest.forEach(function (it) { sum += it.value; });
+    var value = otherMode === 'avg' ? sum / rest.length : sum;
+    var label = otherMode === 'avg'
+      ? 'All others (avg of ' + rest.length + ')'
+      : 'All others (' + rest.length + ')';
+    return kept.concat([{ label: label, value: value, isOther: true }]);
   }
 
   // ---- chart renderers ----
@@ -2018,6 +2053,18 @@
       sort.value = p.sort;
       sort.addEventListener('change', function () { p.sort = sort.value; });
       row.appendChild(sort);
+
+      var other = document.createElement('select');
+      [['sum', 'Σ Sum'], ['avg', 'x̄ Avg'], ['hide', 'Hide']].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o[0];
+        opt.textContent = o[1];
+        other.appendChild(opt);
+      });
+      other.value = p.other || 'sum';
+      other.title = 'How the categories beyond Top N are shown';
+      other.addEventListener('change', function () { p.other = other.value; });
+      row.appendChild(other);
 
       wrap.appendChild(row);
     });
