@@ -600,6 +600,15 @@
         </select>
       </div>
       <div class="field">
+        <label for="f-trend-axis">Axis labels</label>
+        <select id="f-trend-axis">
+          <option value="auto">Auto</option>
+          <option value="year">Year</option>
+          <option value="quarter">Quarter</option>
+          <option value="month">Month</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="f-trend-title">Title override</label>
         <input type="text" id="f-trend-title" placeholder="blank = auto">
       </div>
@@ -776,6 +785,7 @@
     trendBudget: 'true',
     trendZero: 'false',
     trendWindow: 'all',
+    trendAxis: 'auto',
     trendTitle: '',
     midHeight: '250',
     xtShow: 'true',
@@ -869,6 +879,7 @@
       trendBudget: boolOf(getSetting(settings, 'trendBudget')),
       trendZero: boolOf(getSetting(settings, 'trendZero')),
       trendWindow: getSetting(settings, 'trendWindow'),
+      trendAxis: getSetting(settings, 'trendAxis'),
       trendTitle: getSetting(settings, 'trendTitle'),
       midHeight: Math.max(120, intOf(getSetting(settings, 'midHeight'), 250)),
       xtShow: boolOf(getSetting(settings, 'xtShow')),
@@ -1209,37 +1220,39 @@
     });
   };
 
-  // Census (a) and prior-year (p) are additive across rows. Budget (b) can be
-  // at a coarser grain than the row grain (e.g. one monthly figure per
-  // location, repeated across every row-dimension row for the day — say when
-  // Program is on Rows but budget is per-location). Summing that overcounts,
-  // so in 'dedupe' mode we group each day's rows by the budget grain
-  // dimensions and take one value per group, then sum across groups.
+  // Census (a) and prior-year (p) are additive across rows. Budget (b) is a
+  // monthly figure (one number per month per location) repeated across finer
+  // rows (e.g. Program) and every day of the month. In 'dedupe' mode it is
+  // resolved at MONTH grain — one value per (month x grain group), summed
+  // across groups, then applied to every day of that month — so the trend
+  // steps monthly and MTD/YTD stay robust. 'additive' mode sums per day.
   DashApp.prototype.buildDailyTotals = function (dateField, roleMap, cfg) {
     var daily = {};
     var actualF = roleMap.actual, budgetF = roleMap.budget, pyF = roleMap.py;
     var dedupeBudget = !!budgetF && cfg && cfg.budgetGrain === 'dedupe';
     var grainDims = dedupeBudget ? (cfg.budgetGrainDims || []) : [];
+    var monthBudget = {}; // monthKey -> { grainKey -> value (max within group) }
     this.rows.forEach(function (row) {
       var dv = row[dateField];
       if (isNullValue(dv)) { return; }
       var ms = parseDateMs(dv.value);
       if (ms === null) { return; }
       var d = daily[ms];
-      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false, bGroups: null }; }
+      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false }; }
       var a = actualF ? numOf(row[actualF]) : NaN;
       if (!isNaN(a)) { d.a += a; d.aAny = true; }
       if (budgetF) {
         var b = numOf(row[budgetF]);
         if (!isNaN(b)) {
           if (dedupeBudget) {
-            if (!d.bGroups) { d.bGroups = {}; }
+            var dt = new Date(ms);
+            var mk = dt.getUTCFullYear() * 12 + dt.getUTCMonth();
+            var mb = monthBudget[mk] || (monthBudget[mk] = {});
             var key = grainDims.length === 0 ? '' : grainDims.map(function (g) {
               var gv = row[g];
               return isNullValue(gv) ? '' : gv.formattedValue;
             }).join('');
-            if (!(key in d.bGroups) || b > d.bGroups[key]) { d.bGroups[key] = b; }
-            d.bAny = true;
+            if (!(key in mb) || b > mb[key]) { mb[key] = b; }
           } else {
             d.b += b; d.bAny = true;
           }
@@ -1249,12 +1262,16 @@
       if (!isNaN(p)) { d.p += p; d.pAny = true; }
     });
     if (dedupeBudget) {
+      var monthTotal = {};
+      Object.keys(monthBudget).forEach(function (mk) {
+        var groups = monthBudget[mk], sum = 0;
+        Object.keys(groups).forEach(function (g) { sum += groups[g]; });
+        monthTotal[mk] = sum;
+      });
       Object.keys(daily).forEach(function (k) {
-        var d = daily[k];
-        if (!d.bGroups) { return; }
-        var sum = 0;
-        Object.keys(d.bGroups).forEach(function (g) { sum += d.bGroups[g]; });
-        d.b = sum;
+        var dt = new Date(Number(k));
+        var mk = dt.getUTCFullYear() * 12 + dt.getUTCMonth();
+        if (mk in monthTotal) { daily[k].b = monthTotal[mk]; daily[k].bAny = true; }
       });
     }
     return daily;
@@ -1818,6 +1835,52 @@
     return el;
   }
 
+  // Build x-axis ticks for the trend. mode: 'auto' (year for long spans,
+  // month otherwise), 'year', 'quarter', or 'month'. Labels are thinned to
+  // roughly one per 46px so a long range stays legible.
+  function buildXTicks(xmin, xmax, innerW, mode) {
+    mode = mode || 'auto';
+    var d0 = new Date(xmin), d1 = new Date(xmax);
+    var spanDays = (xmax - xmin) / 86400000;
+    var ticks = [];
+    if (mode === 'year' || (mode === 'auto' && spanDays > 500)) {
+      var startYr = d0.getUTCFullYear() + (d0.getUTCMonth() === 0 && d0.getUTCDate() === 1 ? 0 : 1);
+      for (var yr = startYr; yr <= d1.getUTCFullYear(); yr++) {
+        ticks.push({ ms: Date.UTC(yr, 0, 1), label: String(yr) });
+      }
+      return ticks;
+    }
+    var maxLabels = Math.max(2, Math.floor(innerW / 46));
+    var monthLabel = function (cd) {
+      return MONTHS[cd.getUTCMonth()].slice(0, 3) +
+        (cd.getUTCMonth() === 0 ? " '" + String(cd.getUTCFullYear()).slice(2) : '');
+    };
+    if (mode === 'quarter') {
+      var qm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1);
+      if (qm < xmin) { qm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1); }
+      while (qm <= xmax) {
+        var qd = new Date(qm);
+        if (qd.getUTCMonth() % 3 === 0) {
+          ticks.push({ ms: qm, label: 'Q' + (qd.getUTCMonth() / 3 + 1) + " '" + String(qd.getUTCFullYear()).slice(2) });
+        }
+        qm = Date.UTC(qd.getUTCFullYear(), qd.getUTCMonth() + 1, 1);
+      }
+      return ticks;
+    }
+    var months = Math.max(1, Math.round(spanDays / 30.4));
+    var step = Math.max(1, Math.ceil(months / maxLabels));
+    var cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1);
+    if (cm < xmin) { cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1); }
+    var count = 0;
+    while (cm <= xmax) {
+      var cd = new Date(cm);
+      if (count % step === 0) { ticks.push({ ms: cm, label: monthLabel(cd) }); }
+      count++;
+      cm = Date.UTC(cd.getUTCFullYear(), cd.getUTCMonth() + 1, 1);
+    }
+    return ticks;
+  }
+
   function renderTrend(body, series, area, cfg) {
     body.innerHTML = '';
     var W = Math.max(160, body.clientWidth);
@@ -1866,24 +1929,7 @@
       svg.appendChild(lt);
     });
 
-    var spanDays = (xmax - xmin) / 86400000;
-    var xTicks = [];
-    var d0 = new Date(xmin), d1 = new Date(xmax);
-    if (spanDays > 500) {
-      for (var yr = d0.getUTCFullYear() + (d0.getUTCMonth() === 0 && d0.getUTCDate() === 1 ? 0 : 1); yr <= d1.getUTCFullYear(); yr++) {
-        xTicks.push({ ms: Date.UTC(yr, 0, 1), label: String(yr) });
-      }
-    } else {
-      var everyM = spanDays > 240 ? 2 : 1;
-      var cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1);
-      while (cm <= xmax) {
-        var cd = new Date(cm);
-        if (cd.getUTCMonth() % everyM === 0) {
-          xTicks.push({ ms: cm, label: MONTHS[cd.getUTCMonth()].slice(0, 3) + (cd.getUTCMonth() === 0 ? ' ' + String(cd.getUTCFullYear()).slice(2) : '') });
-        }
-        cm = Date.UTC(cd.getUTCFullYear(), cd.getUTCMonth() + 1, 1);
-      }
-    }
+    var xTicks = buildXTicks(xmin, xmax, innerW, cfg.trendAxis);
     xTicks.forEach(function (t) {
       var xx = x(t.ms);
       svg.appendChild(svgEl('line', {
@@ -2132,6 +2178,7 @@
     document.getElementById('f-trend-budget').checked = boolOf(getSetting(settings, 'trendBudget'));
     document.getElementById('f-trend-zero').checked = boolOf(getSetting(settings, 'trendZero'));
     document.getElementById('f-trend-window').value = getSetting(settings, 'trendWindow');
+    document.getElementById('f-trend-axis').value = getSetting(settings, 'trendAxis');
     document.getElementById('f-trend-title').value = getSetting(settings, 'trendTitle');
     document.getElementById('f-mid-height').value = getSetting(settings, 'midHeight');
     document.getElementById('f-xt-show').checked = boolOf(getSetting(settings, 'xtShow'));
@@ -2211,6 +2258,7 @@
       trendBudget: String(document.getElementById('f-trend-budget').checked),
       trendZero: String(document.getElementById('f-trend-zero').checked),
       trendWindow: document.getElementById('f-trend-window').value,
+      trendAxis: document.getElementById('f-trend-axis').value,
       trendTitle: document.getElementById('f-trend-title').value,
       midHeight: document.getElementById('f-mid-height').value,
       xtShow: String(document.getElementById('f-xt-show').checked),

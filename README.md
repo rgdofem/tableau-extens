@@ -212,19 +212,30 @@ figure is *repeated* on every breakdown row for the day (Modality × Phase × Dr
 naively summing it multiplies the budget by the number of breakdown rows (e.g. a 35,028 budget
 shows as ~200K). The **Budget grain** setting handles this:
 
-- **De-duplicate** (default) — the extension takes *one* budget value per grain group per day
-  instead of summing. For a **single site**, leave "Budget varies by" empty → one value per day.
-  For an **all-sites** view where Location is on the Breakdowns tile, check **Location** so each
-  location contributes once and they sum across locations.
+- **De-duplicate** (default) — the budget is resolved at **month grain**: one value per
+  (month × grain group), summed across groups, then applied to every day of that month. For a
+  **single site**, leave "Budget varies by" empty → one value per month. For an **all-sites**
+  view where Location is on the Breakdowns tile, check **Location** so each location contributes
+  once and they sum across locations.
 - **Add it up** — only if your budget is genuinely stored at the row grain (uncommon for census).
+
+Resolving at month grain (rather than per day) is deliberate: the budget is a monthly figure, so
+this keeps it **constant within a month** — the trend budget steps once a month instead of
+wiggling daily, and MTD/YTD stay correct even when some days are missing rows (a partial day no
+longer drags the average down). If the current-month budget still looks low, the budget is being
+split across a dimension that isn't being summed — check that dimension under "Budget varies by".
 
 Budget then uses the same MTD/YTD aggregation as census; with the default **ADC (average)** each
 day carries the monthly target and the average over the window returns that target.
 
-### Trend position
+### Trend position and axis
 
 The trend panel can sit **above the breakdown panels** (a middle layer between the KPI cards and
-the breakdown grid) or **below** them — set it under Trend panel → Position.
+the breakdown grid) or **below** them — set it under Trend panel → Position. The x-axis label
+granularity is set by Trend panel → **Axis labels**: Auto (year for multi-year spans, month
+otherwise), Year, Quarter (`Q3 '26`), or Month (`Jul`, with a year marker each January). Month
+and quarter labels are thinned to fit the panel width. The regional trend has the same Axis
+labels control.
 
 ## MTD / YTD / prior-year windows
 
