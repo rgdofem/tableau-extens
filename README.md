@@ -251,7 +251,8 @@ https://rgdofem.github.io/tableau-extens/census-regional/index.html
 
 ## What it renders
 
-- **KPI row** — identical Day/MTD/YTD cards with budget variance and prior-year lines.
+- **KPI row** — identical Day/MTD/YTD cards with budget variance and prior-year lines, using the
+  same value-left / comparison-right layout as the facility cards.
 - **Variance chart** — diverging red/green bars of actual − budget at the latest date, grouped
   by a Rows dimension (default the first, e.g. Region), sortable A→Z / worst-first / best-first.
 - **Trend chart** — daily total census line over a light budget area, with the same date-window
@@ -275,6 +276,17 @@ Data at **Date × site grain** (daily):
 
 The prior-year note from the facility extension applies here too — map a PY measure or keep last
 year's dates in the worksheet.
+
+### Budget grain
+
+Same coarse-budget handling as the facility extension, but it defaults to **Add it up** because
+the natural regional grain (Region / Location) usually matches the budget's grain, so no fan-out
+occurs. If you add a Rows dimension *finer* than the budget — e.g. **Program** under a
+per-location budget — the budget is repeated across those rows and the totals/KPIs would double.
+In that case switch **Budget grain** to **De-duplicate** and check the dimension(s) the budget is
+unique by (e.g. Region + Location); the KPI cards, variance chart, and crosstab totals then take
+one budget value per group. Per-row budget cells still show the location's figure on each finer
+row, so keep the crosstab at the budget's grain if you want a clean per-row comparison.
 
 ## Testing either extension outside Tableau
 

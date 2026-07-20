@@ -120,35 +120,51 @@
     margin-bottom: 10px;
   }
 
+  /* Value on the left, comparison lines stacked on the right, vertically
+     centered — fills the tile width instead of leaving the right half blank. */
   .kpi-body {
-    padding: 10px 14px 12px 14px;
+    flex: 1 1 auto;
+    padding: 10px 16px;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
   }
 
   .kpi-value {
-    font-size: 30px;
+    font-size: 34px;
     font-weight: 700;
-    line-height: 1.15;
+    line-height: 1.1;
     font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+
+  .kpi-compare {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    text-align: right;
   }
 
   .kpi-line {
     font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.25;
   }
 
   .kpi-line .tri { font-size: 9px; }
 
   .kpi-line.muted { color: var(--label-color); font-weight: 400; }
+
+  /* When there are no comparison lines, center the value instead. */
+  .kpi-body.value-only { justify-content: center; }
+  .kpi-body.value-only .kpi-value { font-size: 40px; }
 
   /* -------- Middle row -------- */
   #mid-row {
@@ -320,6 +336,20 @@
   #dialog label.check { font-weight: 400; }
 
   #dialog .note { font-size: 12px; color: #6B7280; }
+
+  #dialog .check-list {
+    max-height: 110px;
+    overflow-y: auto;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+
+  #dialog .check-list label {
+    display: block;
+    font-weight: 400;
+    margin-bottom: 2px;
+  }
 
   #dialog input[type="text"],
   #dialog input[type="number"],
@@ -502,6 +532,22 @@
       <div class="field">
         <label class="check"><input type="checkbox" id="f-show-py"> Show prior-year comparison line</label>
       </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Budget grain</legend>
+    <div class="field">
+      <label for="f-budget-grain">Budget is stored at</label>
+      <select id="f-budget-grain">
+        <option value="additive">Row grain — add it up (default)</option>
+        <option value="dedupe">Coarser grain (e.g. monthly per location) — de-duplicate</option>
+      </select>
+    </div>
+    <div class="field" id="budget-grain-dims-wrap">
+      <label>Budget varies by (grain dimensions)</label>
+      <div id="budget-grain-dims" class="check-list"></div>
+      <div class="note">Only used when de-duplicating. If a monthly-per-location budget is repeated across a finer row dimension (e.g. Program), summing it overcounts. Check the dimension(s) the budget is actually unique by — e.g. Location — and the KPIs, variance chart and crosstab totals take one value per group instead of summing. With Rows at exactly the budget's grain, leave this on "Add it up".</div>
     </div>
   </fieldset>
 
@@ -720,6 +766,8 @@
     kpiYtdAgg: 'avg',
     showBudget: 'true',
     showPY: 'true',
+    budgetGrain: 'additive',
+    budgetGrainDims: '[]',
     varShow: 'true',
     varDim: '',
     varSort: 'alpha',
@@ -787,6 +835,13 @@
     } catch (e) { return {}; }
   }
 
+  function parseJsonArray(raw) {
+    try {
+      var v = JSON.parse(raw || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+
   function readConfig(settings) {
     return {
       titleOverride: getSetting(settings, 'titleOverride'),
@@ -804,6 +859,8 @@
       kpiYtdAgg: getSetting(settings, 'kpiYtdAgg'),
       showBudget: boolOf(getSetting(settings, 'showBudget')),
       showPY: boolOf(getSetting(settings, 'showPY')),
+      budgetGrain: getSetting(settings, 'budgetGrain'),
+      budgetGrainDims: parseJsonArray(getSetting(settings, 'budgetGrainDims')),
       varShow: boolOf(getSetting(settings, 'varShow')),
       varDim: getSetting(settings, 'varDim'),
       varSort: getSetting(settings, 'varSort'),
@@ -1152,23 +1209,54 @@
     });
   };
 
-  DashApp.prototype.buildDailyTotals = function (dateField, roleMap) {
+  // Census (a) and prior-year (p) are additive across rows. Budget (b) can be
+  // at a coarser grain than the row grain (e.g. one monthly figure per
+  // location, repeated across every row-dimension row for the day — say when
+  // Program is on Rows but budget is per-location). Summing that overcounts,
+  // so in 'dedupe' mode we group each day's rows by the budget grain
+  // dimensions and take one value per group, then sum across groups.
+  DashApp.prototype.buildDailyTotals = function (dateField, roleMap, cfg) {
     var daily = {};
     var actualF = roleMap.actual, budgetF = roleMap.budget, pyF = roleMap.py;
+    var dedupeBudget = !!budgetF && cfg && cfg.budgetGrain === 'dedupe';
+    var grainDims = dedupeBudget ? (cfg.budgetGrainDims || []) : [];
     this.rows.forEach(function (row) {
       var dv = row[dateField];
       if (isNullValue(dv)) { return; }
       var ms = parseDateMs(dv.value);
       if (ms === null) { return; }
       var d = daily[ms];
-      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false }; }
+      if (!d) { d = daily[ms] = { a: 0, aAny: false, b: 0, bAny: false, p: 0, pAny: false, bGroups: null }; }
       var a = actualF ? numOf(row[actualF]) : NaN;
       if (!isNaN(a)) { d.a += a; d.aAny = true; }
-      var b = budgetF ? numOf(row[budgetF]) : NaN;
-      if (!isNaN(b)) { d.b += b; d.bAny = true; }
+      if (budgetF) {
+        var b = numOf(row[budgetF]);
+        if (!isNaN(b)) {
+          if (dedupeBudget) {
+            if (!d.bGroups) { d.bGroups = {}; }
+            var key = grainDims.length === 0 ? '' : grainDims.map(function (g) {
+              var gv = row[g];
+              return isNullValue(gv) ? '' : gv.formattedValue;
+            }).join('');
+            if (!(key in d.bGroups) || b > d.bGroups[key]) { d.bGroups[key] = b; }
+            d.bAny = true;
+          } else {
+            d.b += b; d.bAny = true;
+          }
+        }
+      }
       var p = pyF ? numOf(row[pyF]) : NaN;
       if (!isNaN(p)) { d.p += p; d.pAny = true; }
     });
+    if (dedupeBudget) {
+      Object.keys(daily).forEach(function (k) {
+        var d = daily[k];
+        if (!d.bGroups) { return; }
+        var sum = 0;
+        Object.keys(d.bGroups).forEach(function (g) { sum += d.bGroups[g]; });
+        d.b = sum;
+      });
+    }
     return daily;
   };
 
@@ -1186,6 +1274,40 @@
     if (mode === 'sum') { return sum; }
     if (mode === 'latest') { return latestVal; }
     return sum / count;
+  }
+
+  var GKEY_SEP = String.fromCharCode(1);
+
+  // Sums a budget-type measure over a set of rows. When cfg.budgetGrain is
+  // 'dedupe' the budget is treated as coarser than the row grain (repeated
+  // across finer rows), so rows are grouped by the budget grain dimensions
+  // and one value per group is summed — instead of adding every row.
+  function budgetSum(rows, budgetField, cfg) {
+    if (!budgetField) { return { value: null, any: false }; }
+    var dedupe = cfg && cfg.budgetGrain === 'dedupe';
+    if (!dedupe) {
+      var sum = 0, any = false;
+      rows.forEach(function (row) {
+        var b = numOf(row[budgetField]);
+        if (!isNaN(b)) { sum += b; any = true; }
+      });
+      return { value: any ? sum : null, any: any };
+    }
+    var grainDims = cfg.budgetGrainDims || [];
+    var groups = {}, hasAny = false;
+    rows.forEach(function (row) {
+      var b = numOf(row[budgetField]);
+      if (isNaN(b)) { return; }
+      var key = grainDims.length === 0 ? '' : grainDims.map(function (g) {
+        var gv = row[g];
+        return isNullValue(gv) ? '' : gv.formattedValue;
+      }).join(GKEY_SEP);
+      if (!(key in groups) || b > groups[key]) { groups[key] = b; }
+      hasAny = true;
+    });
+    var total = 0;
+    Object.keys(groups).forEach(function (k) { total += groups[k]; });
+    return { value: hasAny ? total : null, any: hasAny };
   }
 
   // ---- render ----
@@ -1219,7 +1341,7 @@
     }
     emptyEl.classList.add('hidden');
 
-    var daily = this.buildDailyTotals(dateField, roleMap);
+    var daily = this.buildDailyTotals(dateField, roleMap, cfg);
     var keys = Object.keys(daily).map(Number).sort(function (a, b) { return a - b; });
     var anchorMs = null;
     for (var i = keys.length - 1; i >= 0; i--) {
@@ -1286,6 +1408,9 @@
       valueEl.textContent = formatNumber(actual, cfg);
       body.appendChild(valueEl);
 
+      var compare = document.createElement('div');
+      compare.className = 'kpi-compare';
+
       if (cfg.showBudget && budget !== null && actual !== null) {
         var delta = actual - budget;
         var favorable = (delta >= 0) === cfg.hib;
@@ -1302,14 +1427,14 @@
         line1.appendChild(tri);
         line1.appendChild(document.createTextNode(' ' + (delta >= 0 ? 'above' : 'below') + ' ' +
           formatNumber(budget, cfg) + ' budget'));
-        body.appendChild(line1);
+        compare.appendChild(line1);
 
         var line2 = document.createElement('div');
         line2.className = 'kpi-line';
         line2.style.color = color;
         var pctStr = pct === null ? '–' : pct.toFixed(pct >= 10 ? 0 : 1) + '%';
         line2.textContent = (delta < 0 ? '(' + pctStr + ')' : pctStr) + ' ' + (favorable ? 'favorable' : 'unfavorable');
-        body.appendChild(line2);
+        compare.appendChild(line2);
       }
 
       if (cfg.showPY) {
@@ -1331,7 +1456,13 @@
           pyLine.appendChild(document.createTextNode(' ' +
             (pyPct === null ? '–' : pyPct.toFixed(pyPct >= 10 ? 0 : 1) + '%')));
         }
-        body.appendChild(pyLine);
+        compare.appendChild(pyLine);
+      }
+
+      if (compare.childNodes.length > 0) {
+        body.appendChild(compare);
+      } else {
+        body.classList.add('value-only');
       }
 
       panel.appendChild(body);
@@ -1402,16 +1533,16 @@
       var dv = row[varDim];
       if (isNullValue(dv)) { return; }
       var label = dv.formattedValue;
-      if (!(label in buckets)) { buckets[label] = { a: 0, b: 0, bAny: false }; order.push(label); }
+      if (!(label in buckets)) { buckets[label] = { a: 0, rows: [] }; order.push(label); }
       var a = numOf(row[roleMap.actual]);
       if (!isNaN(a)) { buckets[label].a += a; }
-      var b = numOf(row[roleMap.budget]);
-      if (!isNaN(b)) { buckets[label].b += b; buckets[label].bAny = true; }
+      buckets[label].rows.push(row);
     });
 
     var items = order.map(function (label) {
       var bk = buckets[label];
-      return { label: label, delta: bk.bAny ? bk.a - bk.b : null };
+      var bud = budgetSum(bk.rows, roleMap.budget, cfg);
+      return { label: label, delta: bud.any ? bk.a - bud.value : null };
     }).filter(function (it) { return it.delta !== null; });
 
     if (cfg.varSort === 'asc') { items.sort(function (a, b) { return a.delta - b.delta; }); }
@@ -1472,6 +1603,9 @@
 
   DashApp.prototype.renderCrosstab = function (xtRow, cfg, roleMap, rowFields, anchorRows, anchorMs) {
     var self = this;
+    // When the budget is coarser than the row grain (repeated across the
+    // finer rows), take one value per tuple rather than summing.
+    var dedupe = cfg.budgetGrain === 'dedupe';
 
     // Group the anchor-date rows by the dimension tuple.
     var buckets = {};
@@ -1481,10 +1615,10 @@
         var dv = row[f];
         return isNullValue(dv) ? '' : dv.formattedValue;
       });
-      var key = labels.join(' ');
+      var key = labels.join('\u0001');
       var bk = buckets[key];
       if (!bk) {
-        bk = buckets[key] = { labels: labels, a: 0, aAny: false, b: 0, bAny: false, extras: {} };
+        bk = buckets[key] = { labels: labels, a: 0, aAny: false, b: 0, bMax: null, bAny: false, extras: {} };
         roleMap.extras.forEach(function (f) { bk.extras[f] = { v: 0, any: false }; });
         order.push(key);
       }
@@ -1492,7 +1626,11 @@
       if (!isNaN(a)) { bk.a += a; bk.aAny = true; }
       if (roleMap.budget) {
         var b = numOf(row[roleMap.budget]);
-        if (!isNaN(b)) { bk.b += b; bk.bAny = true; }
+        if (!isNaN(b)) {
+          bk.b += b;
+          if (bk.bMax === null || b > bk.bMax) { bk.bMax = b; }
+          bk.bAny = true;
+        }
       }
       roleMap.extras.forEach(function (f) {
         var v = numOf(row[f]);
@@ -1502,12 +1640,13 @@
 
     var records = order.map(function (key) {
       var bk = buckets[key];
+      var bVal = bk.bAny ? (dedupe ? bk.bMax : bk.b) : null;
       return {
         labels: bk.labels,
         actual: bk.aAny ? bk.a : null,
-        budget: bk.bAny ? bk.b : null,
-        variance: (bk.aAny && bk.bAny) ? bk.a - bk.b : null,
-        varPct: (bk.aAny && bk.bAny && bk.b !== 0) ? (bk.a - bk.b) / bk.b : null,
+        budget: bVal,
+        variance: (bk.aAny && bVal !== null) ? bk.a - bVal : null,
+        varPct: (bk.aAny && bVal !== null && bVal !== 0) ? (bk.a - bVal) / bVal : null,
         extras: roleMap.extras.map(function (f) { return bk.extras[f].any ? bk.extras[f].v : null; })
       };
     });
@@ -1633,8 +1772,12 @@
       var tA = 0, tB = 0, anyA = false, anyB = false;
       records.forEach(function (r) {
         if (r.actual !== null) { tA += r.actual; anyA = true; }
-        if (r.budget !== null) { tB += r.budget; anyB = true; }
       });
+      // Dedupe the budget total across the whole set by grain group, so a
+      // budget repeated across finer rows isn't multiplied in the total.
+      var budTotal = budgetSum(anchorRows, roleMap.budget, cfg);
+      tB = budTotal.value || 0;
+      anyB = budTotal.any;
       columns.forEach(function (c, i) {
         var td = document.createElement('td');
         if (c.dim) {
@@ -1826,6 +1969,7 @@
       var settings = tableau.extensions.settings.getAll();
       self.buildRoleRows(settings);
       self.buildExtraRows(settings);
+      self.buildBudgetGrainDims(settings);
       self.buildVarDim(settings);
       self.populateForm(settings);
 
@@ -1926,6 +2070,27 @@
     });
   };
 
+  DialogApp.prototype.buildBudgetGrainDims = function (settings) {
+    var wrap = document.getElementById('budget-grain-dims');
+    wrap.innerHTML = '';
+    var saved = parseJsonArray(getSetting(settings, 'budgetGrainDims'));
+    if (this.rowFields.length === 0) {
+      wrap.innerHTML = '<div class="note">No Rows dimensions yet — budget de-duplicates to one value per day.</div>';
+      return;
+    }
+    this.rowFields.forEach(function (f, i) {
+      var label = document.createElement('label');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'budget-grain-' + i;
+      cb.value = f;
+      cb.checked = saved.indexOf(f) !== -1;
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + f));
+      wrap.appendChild(label);
+    });
+  };
+
   DialogApp.prototype.buildVarDim = function (settings) {
     var select = document.getElementById('f-var-dim');
     select.innerHTML = '';
@@ -1959,6 +2124,7 @@
     document.getElementById('f-kpi-ytd-agg').value = getSetting(settings, 'kpiYtdAgg');
     document.getElementById('f-show-budget').checked = boolOf(getSetting(settings, 'showBudget'));
     document.getElementById('f-show-py').checked = boolOf(getSetting(settings, 'showPY'));
+    document.getElementById('f-budget-grain').value = getSetting(settings, 'budgetGrain');
     document.getElementById('f-var-show').checked = boolOf(getSetting(settings, 'varShow'));
     document.getElementById('f-var-sort').value = getSetting(settings, 'varSort');
     document.getElementById('f-var-title').value = getSetting(settings, 'varTitle');
@@ -2013,6 +2179,12 @@
       }
     });
 
+    var grainDims = [];
+    this.rowFields.forEach(function (f, i) {
+      var cb = document.getElementById('budget-grain-' + i);
+      if (cb && cb.checked) { grainDims.push(f); }
+    });
+
     var values = {
       titleOverride: document.getElementById('f-title').value,
       kpiWord: document.getElementById('f-kpi-word').value,
@@ -2029,6 +2201,8 @@
       kpiYtdAgg: document.getElementById('f-kpi-ytd-agg').value,
       showBudget: String(document.getElementById('f-show-budget').checked),
       showPY: String(document.getElementById('f-show-py').checked),
+      budgetGrain: document.getElementById('f-budget-grain').value,
+      budgetGrainDims: JSON.stringify(grainDims),
       varShow: String(document.getElementById('f-var-show').checked),
       varDim: document.getElementById('f-var-dim').value,
       varSort: document.getElementById('f-var-sort').value,
