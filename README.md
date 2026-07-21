@@ -314,3 +314,41 @@ Copy the extension's `index.html` into a scratch folder next to a mock file name
 `tableau.extensions.1.latest.min.js` that stubs `initializeAsync`, `worksheetContent`,
 `settings`, and `ui`, then serve the folder with any static server. Both dashboards render
 fully from the mocked summary data; `?dialog=1` loads the settings dialog the same way.
+
+---
+
+# MOR KPI Card
+
+A Tableau **viz extension** in `mor-kpi/`, built to sit next to the P&L Drill Table on the MOR
+report: a single card that switches between many KPIs. A category selector picks a group, a KPI
+selector picks the metric, and the body shows the current-month value, a configurable comparison
+(prior month / last-3-month average / budget / a specific prior month), a rising/falling/flat
+indicator, and an actual-vs-budget/prior-year trend with an optional month-end forecast.
+
+## Hosted URL
+
+```
+https://rgdofem.github.io/tableau-extens/mor-kpi/index.html
+```
+
+## Worksheet setup
+
+Data at **month grain** (one row per month, at whatever level the worksheet is filtered to):
+
+| Tile | Fields (max) | Required |
+|------|--------------|----------|
+| **Date** | The month date, exact month grain (1) | Yes |
+| **Measures** | Every KPI measure plus any budget / prior-year measures (16) | Yes |
+
+Everything about which measures are KPIs, how they group into categories, and how each compares
+is configured in the gear → **KPIs** editor (add/remove KPI cards). On first use the card
+auto-seeds one KPI per actual-looking measure, pairing same-named budget/prior-year measures.
+
+## The month-end forecast
+
+Each KPI can project its current **partial** month to month end. Because the data warehouse is a
+day behind, the run-rate uses **yesterday** as the last day with data: for a sum KPI the forecast
+is `MTD ÷ (days-elapsed ÷ days-in-month)`; point-in-time (average) KPIs project flat. When the
+forecast is on, the KPI's variance is measured off the forecast rather than the raw partial-month
+actual, so a mid-month metric isn't unfairly compared to a full prior month. See
+`mor-kpi/README.md` for the full per-KPI configuration reference.

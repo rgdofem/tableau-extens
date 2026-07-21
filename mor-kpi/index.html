@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOR KPI Card</title>
+<style>
+  :root {
+    --label-color: #6B7280;
+    --border-color: #E5E7EB;
+    --text-color: #1A1A1A;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-color);
+    background: transparent;
+    overflow: hidden;
+  }
+
+  #error-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: #E05A4E;
+    color: white;
+    font-size: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    z-index: 9999;
+    display: none;
+  }
+
+  .hidden { display: none !important; }
+
+  /* -------- Card view -------- */
+  #card-view {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 8px;
+  }
+
+  #card {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    background: #FFFFFF;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.10), 0 4px 12px rgba(16, 24, 40, 0.06);
+    padding: 12px 16px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #card-view.transparent { padding: 0; }
+  #card-view.transparent #card {
+    background: transparent !important;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  #gear {
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 22px; height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--label-color);
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s ease;
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+  }
+  #gear:hover { opacity: 1; }
+
+  #card-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+    padding-right: 22px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Selector bar */
+  #selectors { flex: 0 0 auto; }
+  .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 6px;
+  }
+  .pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: #F7F8FA;
+    color: #4B5563;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .pill:hover { border-color: #B7BEC8; }
+  .pill.active {
+    background: #1A1A1A;
+    border-color: #1A1A1A;
+    color: #FFFFFF;
+  }
+  .pill-row.kpi .pill.active { background: #2C5F8A; border-color: #2C5F8A; }
+
+  #empty-state {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--label-color);
+    font-size: 13px;
+    padding: 12px;
+  }
+
+  /* KPI body */
+  #kpi-body {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 4px 0 8px 0;
+  }
+  #kpi-value-wrap { flex: 0 0 auto; min-width: 0; }
+  #kpi-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--label-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #kpi-value {
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  #kpi-compare {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    text-align: right;
+    padding-top: 2px;
+  }
+  .kpi-line {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+  }
+  .kpi-line .tri { font-size: 10px; margin: 0 1px; }
+  .kpi-line.muted { color: var(--label-color); font-weight: 400; }
+  #bubble {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Trend */
+  #trend-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    margin-top: 2px;
+  }
+  #trend-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--label-color);
+    margin-bottom: 2px;
+  }
+  #trend-body {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+  #trend-body svg { display: block; }
+
+  .trend-legend {
+    position: absolute;
+    top: 2px; right: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 3px 10px;
+    max-width: 80%;
+    font-size: 10px;
+    color: #4B5563;
+    z-index: 3;
+    background: rgba(255,255,255,0.75);
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+  .trend-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .legend-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 2px; }
+  .legend-dash { flex: 0 0 auto; width: 12px; height: 0; border-top: 2px dashed currentColor; }
+
+  /* -------- Dialog view -------- */
+  #dialog {
+    display: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 16px 20px;
+    overflow-y: auto;
+    background: #FFFFFF;
+  }
+  #dialog h2 { font-size: 15px; margin: 0 0 12px 0; }
+  #dialog fieldset {
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    margin: 0 0 14px 0;
+    padding: 10px 12px 12px 12px;
+  }
+  #dialog legend { font-size: 12px; font-weight: 700; color: #111827; padding: 0 4px; }
+  #dialog .field { margin-bottom: 10px; }
+  #dialog label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+  #dialog label.check { font-weight: 400; display: inline-block; }
+  #dialog .note { font-size: 12px; color: #6B7280; }
+  #dialog input[type="text"],
+  #dialog input[type="number"],
+  #dialog select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+  }
+  #dialog input[type="checkbox"] { margin-right: 6px; }
+  #dialog input[type="color"] {
+    width: 44px; height: 28px; padding: 0;
+    border: 1px solid #D1D5DB; border-radius: 6px;
+  }
+  #dialog .row { display: flex; gap: 10px; }
+  #dialog .row > .field { flex: 1; }
+
+  /* KPI editor */
+  .kpi-card {
+    border: 1px solid #D8DCE2;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    background: #FBFCFD;
+  }
+  .kpi-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .kpi-card-head .grip { font-size: 11px; color: #9CA3AF; font-weight: 700; }
+  .kpi-card-head input.kpi-label-input { flex: 1 1 auto; font-weight: 600; }
+  .kpi-remove {
+    flex: 0 0 auto;
+    border: 1px solid #E4B4B0;
+    background: #FdF1F0;
+    color: #C0392B;
+    border-radius: 6px;
+    width: 26px; height: 26px;
+    font-size: 15px; line-height: 1;
+    cursor: pointer;
+  }
+  .kpi-remove:hover { background: #Fbe3e1; }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+  }
+  .kpi-grid .full { grid-column: 1 / -1; }
+  .kpi-grid label { margin-bottom: 3px; }
+  .kpi-fmt-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  #add-kpi {
+    font-size: 12px; font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px dashed #9CA3AF;
+    background: #FFFFFF;
+    color: #374151;
+    cursor: pointer;
+    width: 100%;
+  }
+  #add-kpi:hover { border-color: #6B7280; }
+
+  #dialog-buttons {
+    position: sticky;
+    bottom: 0;
+    background: #FFFFFF;
+    padding-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #E5E7EB;
+    margin-top: 6px;
+  }
+  #dialog button.foot {
+    font-size: 13px; padding: 7px 16px;
+    border-radius: 6px; border: 1px solid #D1D5DB;
+    background: #FFFFFF; cursor: pointer;
+  }
+  #dialog button.foot.primary { background: #1A1A1A; color: #FFFFFF; border-color: #1A1A1A; }
+</style>
+</head>
+<body>
+
+<div id="error-banner"></div>
+
+<!-- Card view -->
+<div id="card-view" class="hidden">
+  <div id="card">
+    <button id="gear" title="Configure" aria-label="Configure">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+        <path d="M19.14 12.94a7.14 7.14 0 0 0 .06-.94 7.14 7.14 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.24.1.48-.02.6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 15.6 12 3.6 3.6 0 0 1 12 15.6Z"/>
+      </svg>
+    </button>
+    <h1 id="card-title" class="hidden"></h1>
+    <div id="selectors" class="hidden">
+      <div id="cat-row" class="pill-row cat"></div>
+      <div id="kpi-row" class="pill-row kpi"></div>
+    </div>
+    <div id="empty-state" class="hidden"></div>
+    <div id="content" class="hidden">
+      <div id="kpi-body">
+        <div id="kpi-value-wrap">
+          <div id="kpi-label"></div>
+          <div id="kpi-value"></div>
+        </div>
+        <div id="kpi-compare"></div>
+      </div>
+      <div id="trend-wrap">
+        <div id="trend-title" class="hidden"></div>
+        <div id="trend-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog / configuration view -->
+<div id="dialog">
+  <h2>MOR KPI Card — Settings</h2>
+
+  <fieldset>
+    <legend>General</legend>
+    <div class="row">
+      <div class="field">
+        <label for="f-title">Card title (blank = none)</label>
+        <input type="text" id="f-title" placeholder="">
+      </div>
+      <div class="field">
+        <label for="f-flat">Flat band (% ± counts as flat)</label>
+        <input type="number" id="f-flat" min="0" max="100" step="0.1">
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-elapsed">Forecast: days elapsed override (blank = auto from yesterday)</label>
+      <input type="number" id="f-elapsed" min="1" max="31" step="1" placeholder="Auto — the data warehouse is a day behind, so it uses yesterday's date">
+    </div>
+    <div class="note">The month-end forecast projects the current partial month using its run-rate. Days elapsed is auto-derived from yesterday's date (the DWH lags a day); override only if the data lags further.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Trend chart</legend>
+    <div class="row">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-trend-show"> Show trend chart</label>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-trend-zero"> Y axis from zero</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-trend-axis">Axis labels</label>
+        <select id="f-trend-axis">
+          <option value="auto">Auto</option>
+          <option value="year">Year</option>
+          <option value="quarter">Quarter</option>
+          <option value="month">Month</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-trend-window">Date window</label>
+        <select id="f-trend-window">
+          <option value="all">All months</option>
+          <option value="ytd">Year to date</option>
+          <option value="1y">Trailing 12 months</option>
+          <option value="2y">Trailing 24 months</option>
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>KPIs</legend>
+    <div id="kpi-none" class="field note hidden">Drop your measures on the Measures tile, then reopen this dialog to configure KPIs.</div>
+    <div id="kpi-editor"></div>
+    <button type="button" id="add-kpi">+ Add KPI</button>
+    <div class="note" style="margin-top:8px;">Each KPI picks an Actual measure and how it compares. Budget/Prior-year measures are optional. The Category groups KPIs into the top selector. Auto-detected on first use.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Appearance</legend>
+    <div class="row">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="f-transparent"> Transparent background</label>
+      </div>
+      <div class="field">
+        <label for="f-page-bg">Card background</label>
+        <input type="color" id="f-page-bg">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-value-color">Value color</label>
+        <input type="color" id="f-value-color">
+      </div>
+      <div class="field">
+        <label for="f-chart-color">Chart base color</label>
+        <input type="color" id="f-chart-color">
+      </div>
+      <div class="field">
+        <label for="f-fav-text">Favorable</label>
+        <input type="color" id="f-fav-text">
+      </div>
+      <div class="field">
+        <label for="f-unfav-text">Unfavorable</label>
+        <input type="color" id="f-unfav-text">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="f-thousands">Thousands separator</label>
+        <select id="f-thousands"><option value="true">On</option><option value="false">Off</option></select>
+      </div>
+      <div class="field"></div>
+    </div>
+  </fieldset>
+
+  <div id="dialog-buttons">
+    <button id="btn-cancel" class="foot" type="button">Cancel</button>
+    <button id="btn-save" class="foot primary" type="button">Save</button>
+  </div>
+</div>
+
+<script src="./tableau.extensions.1.latest.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Encoding tile ids (2 tiles, well under the 4-tile manifest limit).
+  var ENC = { DATE: 'date', MEASURES: 'measures' };
+
+  var DEFAULTS = {
+    title: '',
+    flatThresholdPct: '0.5',
+    forecastElapsedOverride: '',
+    trendShow: 'true',
+    trendZero: 'false',
+    trendAxis: 'auto',
+    trendWindow: 'all',
+    transparentBg: 'false',
+    pageBg: '#FFFFFF',
+    valueColor: '#2C5F8A',
+    chartColor: '#4A90D9',
+    favText: '#2E7D32',
+    unfavText: '#C62828',
+    thousandsSep: 'true',
+    kpiDefs: '[]'
+  };
+
+  // Per-KPI defaults (applied when a saved def omits a key).
+  var KPI_DEFAULTS = {
+    id: '', label: '', category: 'General',
+    actual: '', agg: 'sum',
+    compMode: 'prior', compMonthOffset: 12,
+    budget: '', py: '',
+    hib: true, forecast: false,
+    trendCompare: 'budget',
+    fmtPrefix: '', fmtSuffix: '', fmtScale: 'none', fmtDecimals: 0
+  };
+
+  function showFatalError(msg) {
+    var banner = document.getElementById('error-banner');
+    if (!banner) { return; }
+    banner.textContent = msg;
+    banner.style.display = 'block';
+  }
+
+  if (typeof tableau === 'undefined') {
+    showFatalError('Failed to load the Tableau Extensions API library (tableau.extensions.1.latest.min.js). ' +
+      'Make sure the file is deployed alongside index.html.');
+    return;
+  }
+
+  var isDialog = window.location.search.indexOf('dialog=1') !== -1;
+
+  // ---- small helpers (shared shape with the other extensions) ----
+  function getSetting(settings, key) {
+    var v = settings[key];
+    return (v === undefined || v === null) ? DEFAULTS[key] : v;
+  }
+  function boolOf(v) { return v === true || v === 'true'; }
+  function intOf(v, fallback) { var n = parseInt(v, 10); return isFinite(n) ? n : fallback; }
+  function floatOf(v, fallback) { var n = parseFloat(v); return isFinite(n) ? n : fallback; }
+  function parseJsonArray(raw) {
+    try { var v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function isNullValue(dv) {
+    return !dv || dv.value === null || dv.value === undefined || String(dv.value) === '%null%';
+  }
+  function numOf(dv) {
+    if (isNullValue(dv)) { return NaN; }
+    var v = dv.value;
+    var n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : NaN;
+  }
+
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Normalizes any Tableau date value to a UTC-midnight ms key.
+  function parseDateMs(raw) {
+    var s = String(raw);
+    var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+    if (m) { return Date.UTC(+m[1], +m[2] - 1, +m[3]); }
+    var t = Date.parse(s);
+    if (isNaN(t)) { t = Date.parse(s.replace(' ', 'T')); }
+    if (isNaN(t)) { return null; }
+    var d = new Date(t);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  // Month keys are y*12 + monthIndex, so arithmetic on them is trivial.
+  function mkOf(ms) { var d = new Date(ms); return d.getUTCFullYear() * 12 + d.getUTCMonth(); }
+  function yearOfMk(mk) { return Math.floor(mk / 12); }
+  function monthOfMk(mk) { return ((mk % 12) + 12) % 12; }
+  function msOfMk(mk) { return Date.UTC(yearOfMk(mk), monthOfMk(mk), 1); }
+  function daysInMk(mk) { return new Date(Date.UTC(yearOfMk(mk), monthOfMk(mk) + 1, 0)).getUTCDate(); }
+  function fmtMonthYear(mk) { return MONTHS[monthOfMk(mk)] + ' ' + yearOfMk(mk); }
+  function fmtMonthShortYear(mk) { return MONTHS[monthOfMk(mk)].slice(0, 3) + ' ' + yearOfMk(mk); }
+
+  function scaleParts(scale) {
+    if (scale === 'M') { return { divisor: 1e6, letter: 'M' }; }
+    if (scale === 'K') { return { divisor: 1e3, letter: 'K' }; }
+    return { divisor: 1, letter: '' };
+  }
+
+  // Accounting style: negatives wrapped in parentheses. fmt is a per-KPI
+  // format object {prefix, suffix, scale, decimals} plus the global separator.
+  function formatValue(num, fmt, thousandsSep) {
+    if (num === null || num === undefined || isNaN(num)) { return '–'; }
+    var sp = scaleParts(fmt.scale);
+    var scaled = Math.abs(num) / sp.divisor;
+    var numStr;
+    if (thousandsSep) {
+      numStr = scaled.toLocaleString('en-US', {
+        minimumFractionDigits: fmt.decimals, maximumFractionDigits: fmt.decimals
+      });
+    } else {
+      numStr = scaled.toFixed(fmt.decimals);
+    }
+    var core = fmt.prefix + numStr + sp.letter + fmt.suffix;
+    return num < 0 ? '(' + core + ')' : core;
+  }
+
+  function fmtAxis(v) {
+    var a = Math.abs(v);
+    if (a >= 1e6) { return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M'; }
+    if (a >= 1e4) { return (v / 1e3).toFixed(0) + 'K'; }
+    return Math.round(v).toLocaleString('en-US');
+  }
+
+  function hexToRgb(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+    if (!m) { return { r: 74, g: 144, b: 217 }; }
+    var n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function lighten(hex, t) {
+    var c = hexToRgb(hex);
+    return 'rgb(' + Math.round(c.r + (255 - c.r) * t) + ',' +
+      Math.round(c.g + (255 - c.g) * t) + ',' + Math.round(c.b + (255 - c.b) * t) + ')';
+  }
+
+  function niceTicks(min, max, count) {
+    if (!(max > min)) { max = min + 1; }
+    var span = max - min;
+    var step = Math.pow(10, Math.floor(Math.log(span / count) / Math.LN10));
+    var err = span / count / step;
+    if (err >= 7.5) { step *= 10; }
+    else if (err >= 3.5) { step *= 5; }
+    else if (err >= 1.5) { step *= 2; }
+    var ticks = [];
+    for (var v = Math.ceil(min / step) * step; v <= max + step * 0.001; v += step) { ticks.push(v); }
+    return ticks;
+  }
+
+  // ---- KPI role classification (auto-seed only) ----
+  function isBudgetName(s) { return /budg|plan|target/.test(s); }
+  function isForecastName(s) { return /forecast|fcst/.test(s); }
+  function isPyName(s) {
+    return /prior|previous|last.?year|(^|[^a-z])py([^a-z]|$)|(^|[^a-z])ly([^a-z]|$)/.test(s);
+  }
+  function classifyMeasureName(name) {
+    var s = String(name).toLowerCase();
+    if (isBudgetName(s) || isForecastName(s) || isPyName(s)) { return 'aux'; }
+    return 'actual';
+  }
+  // Strips budget/py/forecast qualifier words so an actual can be matched to
+  // its sibling budget/py measure by the remaining "stem".
+  function stemOf(name) {
+    return String(name).toLowerCase()
+      .replace(/budget|budgeted|plan|planned|target|forecast|fcst|prior year|prior|previous|last year|\bpy\b|\bly\b/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  // Build a default KPI list from the measure fields: one KPI per actual-looking
+  // measure, paired with a same-stem budget/py measure when one exists.
+  function autoSeedKpis(measureFields) {
+    var auxBudget = {}, auxPy = {};
+    measureFields.forEach(function (f) {
+      var s = f.toLowerCase();
+      if (isBudgetName(s) || isForecastName(s)) { auxBudget[stemOf(f)] = f; }
+      else if (isPyName(s)) { auxPy[stemOf(f)] = f; }
+    });
+    var defs = [];
+    measureFields.forEach(function (f, i) {
+      if (classifyMeasureName(f) !== 'actual') { return; }
+      var stem = stemOf(f);
+      defs.push(mergeKpi({
+        id: 'kpi' + i, label: f, category: 'General', actual: f,
+        budget: auxBudget[stem] || '', py: auxPy[stem] || '',
+        trendCompare: auxBudget[stem] ? 'budget' : (auxPy[stem] ? 'py' : 'none')
+      }));
+    });
+    return defs;
+  }
+
+  function mergeKpi(def) {
+    var out = {};
+    Object.keys(KPI_DEFAULTS).forEach(function (k) {
+      out[k] = (def && def[k] !== undefined && def[k] !== null) ? def[k] : KPI_DEFAULTS[k];
+    });
+    out.hib = boolOf(out.hib);
+    out.forecast = boolOf(out.forecast);
+    out.compMonthOffset = intOf(out.compMonthOffset, 12);
+    out.fmtDecimals = intOf(out.fmtDecimals, 0);
+    return out;
+  }
+
+  function kpiFmt(def) {
+    return { prefix: def.fmtPrefix, suffix: def.fmtSuffix, scale: def.fmtScale, decimals: def.fmtDecimals };
+  }
+
+  function readConfig(settings) {
+    return {
+      title: getSetting(settings, 'title'),
+      flatThresholdPct: floatOf(getSetting(settings, 'flatThresholdPct'), 0.5),
+      forecastElapsedOverride: getSetting(settings, 'forecastElapsedOverride'),
+      trendShow: boolOf(getSetting(settings, 'trendShow')),
+      trendZero: boolOf(getSetting(settings, 'trendZero')),
+      trendAxis: getSetting(settings, 'trendAxis'),
+      trendWindow: getSetting(settings, 'trendWindow'),
+      transparentBg: boolOf(getSetting(settings, 'transparentBg')),
+      pageBg: getSetting(settings, 'pageBg'),
+      valueColor: getSetting(settings, 'valueColor'),
+      chartColor: getSetting(settings, 'chartColor'),
+      favText: getSetting(settings, 'favText'),
+      unfavText: getSetting(settings, 'unfavText'),
+      thousandsSep: boolOf(getSetting(settings, 'thousandsSep')),
+      kpiDefsRaw: getSetting(settings, 'kpiDefs')
+    };
+  }
+
+  // Resolve the KPI list: saved defs if present, else auto-seed from measures.
+  function resolveKpiDefs(cfg, measureFields) {
+    var saved = parseJsonArray(cfg.kpiDefsRaw);
+    var defs = saved.length > 0 ? saved.map(mergeKpi) : autoSeedKpis(measureFields);
+    // Keep only KPIs whose actual measure is still on the worksheet, and give
+    // every def a stable id.
+    defs = defs.filter(function (d) { return d.actual && measureFields.indexOf(d.actual) !== -1; });
+    defs.forEach(function (d, i) { if (!d.id) { d.id = 'kpi' + i; } });
+    return defs;
+  }
+
+  // As-of date is YESTERDAY: the data warehouse is always a day behind, so the
+  // latest day with data is yesterday. Used to size the current-month run-rate.
+  function asOfParts() {
+    var now = new Date();
+    var y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    return { mk: y.getFullYear() * 12 + y.getMonth(), day: y.getDate() };
+  }
+
+  // =========================================================================
+  // Card app
+  // =========================================================================
+  function CardApp() {
+    this.worksheet = null;
+    this.settings = {};
+    this.encodingMap = {};
+    this.rows = [];
+    this.selCategory = null;   // session selection (not persisted)
+    this.selKpiId = null;
+    this.renderQueued = false;
+  }
+
+  CardApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeAsync({ configure: function () { self.openConfigDialog(); } }).then(function () {
+      self.worksheet = tableau.extensions.worksheetContent.worksheet;
+      self.settings = tableau.extensions.settings.getAll();
+
+      document.getElementById('card-view').classList.remove('hidden');
+      document.getElementById('gear').addEventListener('click', function () { self.openConfigDialog(); });
+
+      self.worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () {
+        self.updateAndRender();
+      });
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, function (evt) {
+        self.settings = evt.newSettings;
+        self.selCategory = null; self.selKpiId = null; // defs may have changed
+        self.render();
+      });
+
+      var queueRender = function () {
+        if (self.renderQueued) { return; }
+        self.renderQueued = true;
+        setTimeout(function () { self.renderQueued = false; self.render(); }, 120);
+      };
+      window.addEventListener('resize', queueRender);
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(queueRender).observe(document.getElementById('card'));
+      }
+
+      return self.updateAndRender();
+    }, function (err) {
+      showFatalError('Failed to initialize extension: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  CardApp.prototype.fieldNamesFor = function (encodingId) {
+    return (this.encodingMap[encodingId] || []).map(function (f) { return f.name; });
+  };
+
+  CardApp.prototype.openConfigDialog = function () {
+    var payload = JSON.stringify({ measureFields: this.fieldNamesFor(ENC.MEASURES) });
+    var popupUrl = window.location.origin + window.location.pathname + '?dialog=1';
+    tableau.extensions.ui.displayDialogAsync(popupUrl, payload, { height: 900, width: 640 })
+      .catch(function (error) {
+        if (error && error.errorCode === tableau.ErrorCodes.DialogClosedByUser) { return; }
+        console.error(error);
+      });
+  };
+
+  CardApp.prototype.getEncodingMap = function () {
+    return this.worksheet.getVisualSpecificationAsync().then(function (visualSpec) {
+      var map = {};
+      if (visualSpec.activeMarksSpecificationIndex < 0) { return map; }
+      var marksCard = visualSpec.marksSpecifications[visualSpec.activeMarksSpecificationIndex];
+      marksCard.encodings.forEach(function (encoding) {
+        if (!map[encoding.id]) { map[encoding.id] = []; }
+        map[encoding.id].push(encoding.field);
+      });
+      return map;
+    });
+  };
+
+  CardApp.prototype.getSummaryRows = function () {
+    return this.worksheet.getSummaryDataReaderAsync(undefined, { ignoreSelection: true }).then(function (reader) {
+      var pageCount = reader.pageCount;
+      var chain = Promise.resolve();
+      var pages = [];
+      for (var i = 0; i < pageCount; i++) {
+        (function (pageIndex) {
+          chain = chain.then(function () {
+            return reader.getPageAsync(pageIndex).then(function (page) { pages.push(page); });
+          });
+        })(i);
+      }
+      return chain.then(function () {
+        return reader.releaseAsync().then(function () { return pages; });
+      });
+    }).then(function (pages) {
+      var rows = [];
+      pages.forEach(function (page) {
+        var columns = page.columns;
+        for (var i = 0; i < page.data.length; i++) {
+          var row = {};
+          for (var j = 0; j < columns.length; j++) {
+            row[columns[j].fieldName] = page.data[i][columns[j].index];
+          }
+          rows.push(row);
+        }
+      });
+      return rows;
+    });
+  };
+
+  CardApp.prototype.updateAndRender = function () {
+    var self = this;
+    return Promise.all([self.getEncodingMap(), self.getSummaryRows()]).then(function (results) {
+      self.encodingMap = results[0];
+      self.rows = results[1];
+      self.render();
+    }).catch(function (err) {
+      showFatalError('Failed to read worksheet data: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  // Aggregate every worksheet row into monthly per-measure totals. The
+  // worksheet's own filters already scope the data, so a plain sum within each
+  // month is the monthly figure (one row per month => sum is identity).
+  CardApp.prototype.buildMonthly = function (dateField, measureFields) {
+    var monthly = {};
+    this.rows.forEach(function (row) {
+      var dv = row[dateField];
+      if (isNullValue(dv)) { return; }
+      var ms = parseDateMs(dv.value);
+      if (ms === null) { return; }
+      var mk = mkOf(ms);
+      var bucket = monthly[mk] || (monthly[mk] = {});
+      measureFields.forEach(function (f) {
+        var v = numOf(row[f]);
+        if (!isNaN(v)) {
+          var cell = bucket[f] || (bucket[f] = { sum: 0, any: false });
+          cell.sum += v; cell.any = true;
+        }
+      });
+    });
+    return monthly;
+  };
+
+  function valAt(monthly, mk, field) {
+    if (!field) { return null; }
+    var b = monthly[mk];
+    if (!b) { return null; }
+    var c = b[field];
+    return (c && c.any) ? c.sum : null;
+  }
+
+  // Compute the forecast month-end value for the anchor (current) month.
+  // sum KPIs use the run-rate (MTD / fraction-of-month elapsed); avg/latest
+  // KPIs project flat. Returns null when there is nothing to project.
+  function forecastFor(currentActual, anchorMk, def, cfg) {
+    if (currentActual === null || !isFinite(currentActual)) { return null; }
+    var dim = daysInMk(anchorMk);
+    var elapsed;
+    var override = intOf(cfg.forecastElapsedOverride, 0);
+    if (override > 0) { elapsed = Math.min(override, dim); }
+    else {
+      var asof = asOfParts();
+      elapsed = (asof.mk === anchorMk) ? Math.min(asof.day, dim) : dim; // else month complete
+    }
+    if (def.agg !== 'sum') { return currentActual; } // point-in-time: flat
+    var frac = elapsed / dim;
+    if (!(frac > 0)) { return currentActual; }
+    return currentActual / frac;
+  }
+
+  CardApp.prototype.render = function () {
+    var cfg = readConfig(this.settings);
+    var cardView = document.getElementById('card-view');
+    var titleEl = document.getElementById('card-title');
+    var selectorsEl = document.getElementById('selectors');
+    var emptyEl = document.getElementById('empty-state');
+    var contentEl = document.getElementById('content');
+
+    cardView.classList.toggle('transparent', cfg.transparentBg);
+    document.getElementById('card').style.background = cfg.transparentBg ? '' : cfg.pageBg;
+
+    titleEl.textContent = cfg.title;
+    titleEl.classList.toggle('hidden', !cfg.title);
+
+    var dateFields = this.fieldNamesFor(ENC.DATE);
+    var measureFields = this.fieldNamesFor(ENC.MEASURES);
+    var dateField = dateFields.length > 0 ? dateFields[0] : null;
+
+    var showEmpty = function (msg) {
+      selectorsEl.classList.add('hidden');
+      contentEl.classList.add('hidden');
+      emptyEl.textContent = msg;
+      emptyEl.classList.remove('hidden');
+    };
+
+    if (!dateField || measureFields.length === 0) {
+      showEmpty('Drop a month Date field on the Date tile and your KPI measures on the Measures tile.');
+      return;
+    }
+
+    var defs = resolveKpiDefs(cfg, measureFields);
+    if (defs.length === 0) {
+      showEmpty('No KPIs configured. Open the gear menu to add a KPI, or drop measures whose names look like metrics.');
+      return;
+    }
+
+    var monthly = this.buildMonthly(dateField, measureFields);
+    var keys = Object.keys(monthly).map(Number).sort(function (a, b) { return a - b; });
+    if (keys.length === 0) { showEmpty('No dated rows found.'); return; }
+    var anchorMk = keys[keys.length - 1];
+
+    // Category / KPI selection (session state).
+    var categories = [];
+    defs.forEach(function (d) { if (categories.indexOf(d.category) === -1) { categories.push(d.category); } });
+    if (!this.selCategory || categories.indexOf(this.selCategory) === -1) { this.selCategory = categories[0]; }
+    var self = this;
+    var inCat = defs.filter(function (d) { return d.category === self.selCategory; });
+    if (!this.selKpiId || !inCat.some(function (d) { return d.id === self.selKpiId; })) {
+      this.selKpiId = inCat.length > 0 ? inCat[0].id : null;
+    }
+    var active = null;
+    defs.forEach(function (d) { if (d.id === self.selKpiId) { active = d; } });
+    if (!active) { active = inCat[0] || defs[0]; }
+
+    emptyEl.classList.add('hidden');
+    selectorsEl.classList.remove('hidden');
+    contentEl.classList.remove('hidden');
+
+    this.renderSelectors(categories, inCat, active);
+    this.renderKpi(cfg, monthly, keys, anchorMk, active);
+  };
+
+  CardApp.prototype.renderSelectors = function (categories, inCat, active) {
+    var self = this;
+    var catRow = document.getElementById('cat-row');
+    var kpiRow = document.getElementById('kpi-row');
+    catRow.innerHTML = '';
+    kpiRow.innerHTML = '';
+
+    // Only show the category row when there's more than one category.
+    catRow.style.display = categories.length > 1 ? 'flex' : 'none';
+    categories.forEach(function (cat) {
+      var pill = document.createElement('button');
+      pill.className = 'pill' + (cat === self.selCategory ? ' active' : '');
+      pill.textContent = cat;
+      pill.addEventListener('click', function () {
+        if (self.selCategory === cat) { return; }
+        self.selCategory = cat;
+        self.selKpiId = null; // reset to first KPI of the new category
+        self.render();
+      });
+      catRow.appendChild(pill);
+    });
+
+    kpiRow.style.display = inCat.length > 1 ? 'flex' : 'none';
+    inCat.forEach(function (d) {
+      var pill = document.createElement('button');
+      pill.className = 'pill' + (d.id === active.id ? ' active' : '');
+      pill.textContent = d.label || d.actual;
+      pill.addEventListener('click', function () {
+        if (self.selKpiId === d.id) { return; }
+        self.selKpiId = d.id;
+        self.render();
+      });
+      kpiRow.appendChild(pill);
+    });
+  };
+
+  CardApp.prototype.renderKpi = function (cfg, monthly, keys, anchorMk, def) {
+    var fmt = kpiFmt(def);
+    var labelEl = document.getElementById('kpi-label');
+    var valueEl = document.getElementById('kpi-value');
+    var compareEl = document.getElementById('kpi-compare');
+    labelEl.textContent = def.label || def.actual;
+
+    var current = valAt(monthly, anchorMk, def.actual);
+    valueEl.textContent = formatValue(current, fmt, cfg.thousandsSep);
+    valueEl.style.color = cfg.valueColor;
+
+    // Forecast (month-end projection of the current partial month).
+    var forecast = def.forecast ? forecastFor(current, anchorMk, def, cfg) : null;
+
+    // Comparison baseline.
+    var comp = null, compLabel = '';
+    if (def.compMode === 'budget') {
+      comp = valAt(monthly, anchorMk, def.budget);
+      compLabel = 'budget';
+    } else if (def.compMode === 'avg3') {
+      var vals = [];
+      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, anchorMk - i, def.actual); if (v !== null) { vals.push(v); } }
+      if (vals.length > 0) { comp = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length; }
+      compLabel = '3-mo avg';
+    } else if (def.compMode === 'month') {
+      var off = intOf(def.compMonthOffset, 12);
+      comp = valAt(monthly, anchorMk - off, def.actual);
+      compLabel = fmtMonthShortYear(anchorMk - off);
+    } else { // prior
+      comp = valAt(monthly, anchorMk - 1, def.actual);
+      compLabel = 'prior mo (' + fmtMonthShortYear(anchorMk - 1) + ')';
+    }
+
+    // When forecast is on, the variance is measured off the projected month-end
+    // value (the point of the feature — a partial month always looks low).
+    var baseValue = (def.forecast && forecast !== null) ? forecast : current;
+
+    compareEl.innerHTML = '';
+    var hasComp = comp !== null && isFinite(comp) && baseValue !== null && isFinite(baseValue);
+
+    if (hasComp) {
+      var delta = baseValue - comp;
+      var favorable = (delta >= 0) === def.hib;
+      var color = favorable ? cfg.favText : cfg.unfavText;
+      var pct = comp !== 0 ? (delta / comp) * 100 : null;
+      var flat = (pct !== null) ? Math.abs(pct) <= cfg.flatThresholdPct : (delta === 0);
+      var tri = flat ? '▬' : (delta > 0 ? '▲' : '▼');
+
+      var bubble = document.createElement('span');
+      bubble.id = 'bubble';
+      bubble.style.background = flat ? '#EFF1F4' : (favorable ? lighten(cfg.favText, 0.82) : lighten(cfg.unfavText, 0.82));
+      bubble.style.color = flat ? '#4B5563' : color;
+      var triSpan = document.createElement('span');
+      triSpan.className = 'tri';
+      triSpan.textContent = tri;
+      bubble.appendChild(triSpan);
+      var pctSpan = document.createElement('span');
+      pctSpan.textContent = pct === null ? formatValue(delta, fmt, cfg.thousandsSep)
+        : (Math.abs(pct).toFixed(Math.abs(pct) >= 10 ? 0 : 1) + '%');
+      bubble.appendChild(pctSpan);
+      compareEl.appendChild(bubble);
+
+      var line1 = document.createElement('div');
+      line1.className = 'kpi-line';
+      line1.style.color = flat ? 'var(--label-color)' : color;
+      line1.textContent = (delta >= 0 ? '+' : '−') + formatValue(Math.abs(delta), fmt, cfg.thousandsSep) + ' vs ' + compLabel;
+      compareEl.appendChild(line1);
+
+      var line2 = document.createElement('div');
+      line2.className = 'kpi-line muted';
+      line2.textContent = compLabel.charAt(0).toUpperCase() + compLabel.slice(1) + ': ' + formatValue(comp, fmt, cfg.thousandsSep);
+      compareEl.appendChild(line2);
+    } else {
+      var none = document.createElement('div');
+      none.className = 'kpi-line muted';
+      none.textContent = 'No comparison data';
+      compareEl.appendChild(none);
+    }
+
+    if (def.forecast && forecast !== null) {
+      var fLine = document.createElement('div');
+      fLine.className = 'kpi-line muted';
+      fLine.textContent = 'Forecast month-end: ' + formatValue(forecast, fmt, cfg.thousandsSep);
+      compareEl.appendChild(fLine);
+    }
+
+    // Trend
+    var trendWrap = document.getElementById('trend-wrap');
+    var trendTitle = document.getElementById('trend-title');
+    var trendBody = document.getElementById('trend-body');
+    if (!cfg.trendShow) {
+      trendWrap.classList.add('hidden');
+      trendBody.innerHTML = '';
+      return;
+    }
+    trendWrap.classList.remove('hidden');
+    trendTitle.classList.add('hidden');
+
+    this.drawTrend(trendBody, cfg, monthly, keys, anchorMk, def, forecast);
+  };
+
+  CardApp.prototype.drawTrend = function (body, cfg, monthly, keys, anchorMk, def, forecast) {
+    var winStart = trendWindowStart(cfg.trendWindow, anchorMk);
+    var actualPts = [];
+    keys.forEach(function (mk) {
+      if (mk < winStart || mk > anchorMk) { return; }
+      var v = valAt(monthly, mk, def.actual);
+      if (v !== null) { actualPts.push([msOfMk(mk), v]); }
+    });
+
+    var series = [{ label: def.label || def.actual, color: cfg.valueColor, points: actualPts }];
+    var area = null;
+
+    if (def.trendCompare === 'budget' && def.budget) {
+      var budgetPts = [];
+      keys.forEach(function (mk) {
+        if (mk < winStart || mk > anchorMk) { return; }
+        var v = valAt(monthly, mk, def.budget);
+        if (v !== null) { budgetPts.push([msOfMk(mk), v]); }
+      });
+      if (budgetPts.length > 1) { area = { label: 'Budget', points: budgetPts, fill: lighten(cfg.chartColor, 0.62) }; }
+    } else if (def.trendCompare === 'py') {
+      var pyPts = [];
+      keys.forEach(function (mk) {
+        if (mk < winStart || mk > anchorMk) { return; }
+        // Prior-year: use a PY measure if mapped, else the actual 12 months back.
+        var v = def.py ? valAt(monthly, mk, def.py) : valAt(monthly, mk - 12, def.actual);
+        if (v !== null) { pyPts.push([msOfMk(mk), v]); }
+      });
+      if (pyPts.length > 1) { series.push({ label: 'Prior year', color: lighten(cfg.valueColor, 0.45), points: pyPts }); }
+    }
+
+    // Forecast: dashed projection from the last complete month to the month-end
+    // forecast at the current (partial) month.
+    if (def.forecast && forecast !== null && actualPts.length >= 2) {
+      var prev = actualPts[actualPts.length - 2];
+      series.push({
+        label: 'Forecast', color: cfg.valueColor, dash: true, markerLast: true,
+        points: [[prev[0], prev[1]], [msOfMk(anchorMk), forecast]]
+      });
+    }
+
+    renderTrend(body, series, area, cfg);
+  };
+
+  function trendWindowStart(mode, anchorMk) {
+    if (mode === 'ytd') { return yearOfMk(anchorMk) * 12; }         // January of anchor year
+    if (mode === '1y') { return anchorMk - 11; }
+    if (mode === '2y') { return anchorMk - 23; }
+    return -Infinity;
+  }
+
+  // ---- trend renderer (shared shape with the census extensions) ----
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    return el;
+  }
+
+  function buildXTicks(xmin, xmax, innerW, mode) {
+    mode = mode || 'auto';
+    var d0 = new Date(xmin), d1 = new Date(xmax);
+    var spanDays = (xmax - xmin) / 86400000;
+    var ticks = [];
+    if (mode === 'year' || (mode === 'auto' && spanDays > 500)) {
+      var startYr = d0.getUTCFullYear() + (d0.getUTCMonth() === 0 && d0.getUTCDate() === 1 ? 0 : 1);
+      for (var yr = startYr; yr <= d1.getUTCFullYear(); yr++) {
+        ticks.push({ ms: Date.UTC(yr, 0, 1), label: String(yr) });
+      }
+      return ticks;
+    }
+    var maxLabels = Math.max(2, Math.floor(innerW / 46));
+    var monthLabel = function (cd) {
+      return MONTHS[cd.getUTCMonth()].slice(0, 3) +
+        (cd.getUTCMonth() === 0 ? " '" + String(cd.getUTCFullYear()).slice(2) : '');
+    };
+    if (mode === 'quarter') {
+      var qm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1);
+      if (qm < xmin) { qm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1); }
+      while (qm <= xmax) {
+        var qd = new Date(qm);
+        if (qd.getUTCMonth() % 3 === 0) {
+          ticks.push({ ms: qm, label: 'Q' + (qd.getUTCMonth() / 3 + 1) + " '" + String(qd.getUTCFullYear()).slice(2) });
+        }
+        qm = Date.UTC(qd.getUTCFullYear(), qd.getUTCMonth() + 1, 1);
+      }
+      return ticks;
+    }
+    var months = Math.max(1, Math.round(spanDays / 30.4));
+    var step = Math.max(1, Math.ceil(months / maxLabels));
+    var cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1);
+    if (cm < xmin) { cm = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1); }
+    var count = 0;
+    while (cm <= xmax) {
+      var cd = new Date(cm);
+      if (count % step === 0) { ticks.push({ ms: cm, label: monthLabel(cd) }); }
+      count++;
+      cm = Date.UTC(cd.getUTCFullYear(), cd.getUTCMonth() + 1, 1);
+    }
+    return ticks;
+  }
+
+  function renderTrend(body, series, area, cfg) {
+    body.innerHTML = '';
+    var W = Math.max(160, body.clientWidth);
+    var H = Math.max(90, body.clientHeight);
+    var mL = 40, mR = 10, mT = 8, mB = 18;
+    var innerW = W - mL - mR, innerH = H - mT - mB;
+
+    var xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+    var scanPts = function (pts) {
+      pts.forEach(function (p) {
+        if (p[0] < xmin) { xmin = p[0]; }
+        if (p[0] > xmax) { xmax = p[0]; }
+        if (p[1] < ymin) { ymin = p[1]; }
+        if (p[1] > ymax) { ymax = p[1]; }
+      });
+    };
+    series.forEach(function (s) { scanPts(s.points); });
+    if (area) { scanPts(area.points); }
+    if (!isFinite(xmin) || !isFinite(ymin)) {
+      body.innerHTML = '<div style="padding:12px;font-size:12px;color:#6B7280;">No trend data.</div>';
+      return;
+    }
+    if (xmax === xmin) { xmax = xmin + 86400000 * 30; }
+    if (cfg.trendZero) { ymin = 0; }
+    else { ymin = Math.max(0, ymin - (ymax - ymin) * 0.08); }
+    if (ymax === ymin) { ymax = ymin + 1; }
+    ymax += (ymax - ymin) * 0.06;
+
+    var x = function (ms) { return mL + ((ms - xmin) / (xmax - xmin)) * innerW; };
+    var y = function (v) { return mT + (1 - (v - ymin) / (ymax - ymin)) * innerH; };
+
+    var svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none' });
+
+    niceTicks(ymin, ymax, 4).forEach(function (tv) {
+      if (tv < ymin || tv > ymax) { return; }
+      var yy = y(tv);
+      svg.appendChild(svgEl('line', { x1: mL, y1: yy.toFixed(1), x2: W - mR, y2: yy.toFixed(1), stroke: '#EDF0F3', 'stroke-width': 1 }));
+      var lt = svgEl('text', { x: mL - 5, y: (yy + 3).toFixed(1), 'text-anchor': 'end', 'font-size': '9', fill: '#6B7280' });
+      lt.textContent = fmtAxis(tv);
+      svg.appendChild(lt);
+    });
+
+    buildXTicks(xmin, xmax, innerW, cfg.trendAxis).forEach(function (t) {
+      var xx = x(t.ms);
+      if (xx < mL - 1 || xx > W - mR + 1) { return; }
+      svg.appendChild(svgEl('line', { x1: xx.toFixed(1), y1: mT, x2: xx.toFixed(1), y2: mT + innerH, stroke: '#F1F3F5', 'stroke-width': 1 }));
+      var lt = svgEl('text', { x: xx.toFixed(1), y: (H - 5).toFixed(1), 'text-anchor': 'middle', 'font-size': '9', fill: '#6B7280' });
+      lt.textContent = t.label;
+      svg.appendChild(lt);
+    });
+
+    var linePath = function (pts) {
+      var d = '';
+      pts.forEach(function (p, i) { d += (i === 0 ? 'M' : 'L') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1); });
+      return d;
+    };
+
+    if (area && area.points.length > 1) {
+      var d = linePath(area.points) +
+        'L' + x(area.points[area.points.length - 1][0]).toFixed(1) + ' ' + (mT + innerH).toFixed(1) +
+        'L' + x(area.points[0][0]).toFixed(1) + ' ' + (mT + innerH).toFixed(1) + 'Z';
+      svg.appendChild(svgEl('path', { d: d, fill: area.fill, stroke: 'none' }));
+    }
+
+    series.forEach(function (s) {
+      if (s.points.length === 0) { return; }
+      if (s.points.length === 1) {
+        svg.appendChild(svgEl('circle', { cx: x(s.points[0][0]).toFixed(1), cy: y(s.points[0][1]).toFixed(1), r: 2.5, fill: s.color }));
+        return;
+      }
+      var attrs = {
+        d: linePath(s.points), fill: 'none', stroke: s.color,
+        'stroke-width': s.dash ? 1.6 : (series.length > 1 ? 1.6 : 2),
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round'
+      };
+      if (s.dash) { attrs['stroke-dasharray'] = '5 4'; }
+      svg.appendChild(svgEl('path', attrs));
+      if (s.markerLast) {
+        var last = s.points[s.points.length - 1];
+        svg.appendChild(svgEl('circle', {
+          cx: x(last[0]).toFixed(1), cy: y(last[1]).toFixed(1), r: 3,
+          fill: '#FFFFFF', stroke: s.color, 'stroke-width': 1.6
+        }));
+      }
+    });
+
+    body.appendChild(svg);
+
+    // Legend (only when there's more than the single actual line).
+    var extra = (area ? 1 : 0) + series.filter(function (s) { return s.dash || s.label === 'Prior year'; }).length;
+    if (extra > 0) {
+      var legend = document.createElement('div');
+      legend.className = 'trend-legend';
+      var addChip = function (label, color, dashed) {
+        var chip = document.createElement('span');
+        var mark = document.createElement('span');
+        if (dashed) { mark.className = 'legend-dash'; mark.style.color = color; }
+        else { mark.className = 'legend-dot'; mark.style.background = color; }
+        chip.appendChild(mark);
+        chip.appendChild(document.createTextNode(label));
+        legend.appendChild(chip);
+      };
+      if (area) { addChip(area.label || 'Budget', area.fill, false); }
+      series.forEach(function (s, i) {
+        if (i === 0) { return; } // the primary actual line needs no chip
+        addChip(s.label, s.color, !!s.dash);
+      });
+      body.appendChild(legend);
+    }
+  }
+
+  // =========================================================================
+  // Dialog app
+  // =========================================================================
+  function DialogApp() {
+    this.measureFields = [];
+    this.kpiCount = 0; // running index for element ids (never reused)
+  }
+
+  DialogApp.prototype.init = function () {
+    var self = this;
+    return tableau.extensions.initializeDialogAsync().then(function (payload) {
+      try { self.measureFields = (JSON.parse(payload || '{}').measureFields) || []; } catch (e) { self.measureFields = []; }
+
+      document.getElementById('dialog').style.display = 'block';
+      var settings = tableau.extensions.settings.getAll();
+      self.populateGlobals(settings);
+      self.buildKpiEditor(settings);
+
+      document.getElementById('add-kpi').addEventListener('click', function () { self.addKpiCard(mergeKpi({})); });
+      document.getElementById('btn-cancel').addEventListener('click', function () { tableau.extensions.ui.closeDialog('cancel'); });
+      document.getElementById('btn-save').addEventListener('click', function () { self.save(); });
+    }, function (err) {
+      showFatalError('Failed to initialize settings dialog: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  DialogApp.prototype.populateGlobals = function (settings) {
+    document.getElementById('f-title').value = getSetting(settings, 'title');
+    document.getElementById('f-flat').value = getSetting(settings, 'flatThresholdPct');
+    document.getElementById('f-elapsed').value = getSetting(settings, 'forecastElapsedOverride');
+    document.getElementById('f-trend-show').checked = boolOf(getSetting(settings, 'trendShow'));
+    document.getElementById('f-trend-zero').checked = boolOf(getSetting(settings, 'trendZero'));
+    document.getElementById('f-trend-axis').value = getSetting(settings, 'trendAxis');
+    document.getElementById('f-trend-window').value = getSetting(settings, 'trendWindow');
+    document.getElementById('f-transparent').checked = boolOf(getSetting(settings, 'transparentBg'));
+    document.getElementById('f-page-bg').value = getSetting(settings, 'pageBg');
+    document.getElementById('f-value-color').value = getSetting(settings, 'valueColor');
+    document.getElementById('f-chart-color').value = getSetting(settings, 'chartColor');
+    document.getElementById('f-fav-text').value = getSetting(settings, 'favText');
+    document.getElementById('f-unfav-text').value = getSetting(settings, 'unfavText');
+    document.getElementById('f-thousands').value = String(boolOf(getSetting(settings, 'thousandsSep')));
+  };
+
+  DialogApp.prototype.buildKpiEditor = function (settings) {
+    var self = this;
+    var editor = document.getElementById('kpi-editor');
+    editor.innerHTML = '';
+    if (this.measureFields.length === 0) {
+      document.getElementById('kpi-none').classList.remove('hidden');
+      document.getElementById('add-kpi').disabled = true;
+      return;
+    }
+    var saved = parseJsonArray(getSetting(settings, 'kpiDefs'));
+    var defs = saved.length > 0 ? saved.map(mergeKpi) : autoSeedKpis(this.measureFields);
+    if (defs.length === 0) { defs = [mergeKpi({ actual: this.measureFields[0], label: this.measureFields[0] })]; }
+    defs.forEach(function (d) { self.addKpiCard(d); });
+  };
+
+  // Build one option element.
+  function opt(value, label) { var o = document.createElement('option'); o.value = value; o.textContent = label; return o; }
+
+  function measureSelect(id, fields, selected, includeNone) {
+    var sel = document.createElement('select');
+    sel.id = id;
+    if (includeNone) { sel.appendChild(opt('', '(none)')); }
+    fields.forEach(function (f) { sel.appendChild(opt(f, f)); });
+    sel.value = (selected && fields.indexOf(selected) !== -1) ? selected : (includeNone ? '' : (fields[0] || ''));
+    return sel;
+  }
+
+  function labeledField(labelText, control, extraClass) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field' + (extraClass ? ' ' + extraClass : '');
+    var lbl = document.createElement('label');
+    lbl.textContent = labelText;
+    wrap.appendChild(lbl);
+    wrap.appendChild(control);
+    return wrap;
+  }
+
+  DialogApp.prototype.addKpiCard = function (def) {
+    var self = this;
+    var i = this.kpiCount++;
+    var fields = this.measureFields;
+    var card = document.createElement('div');
+    card.className = 'kpi-card';
+    card.setAttribute('data-idx', String(i));
+
+    // Header: label + remove
+    var head = document.createElement('div');
+    head.className = 'kpi-card-head';
+    var grip = document.createElement('span'); grip.className = 'grip'; grip.textContent = 'KPI';
+    head.appendChild(grip);
+    var labelInput = document.createElement('input');
+    labelInput.type = 'text'; labelInput.className = 'kpi-label-input'; labelInput.id = 'kpi-' + i + '-label';
+    labelInput.placeholder = 'Label (blank = measure name)'; labelInput.value = def.label || '';
+    head.appendChild(labelInput);
+    var rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'kpi-remove'; rm.textContent = '×'; rm.title = 'Remove KPI';
+    rm.addEventListener('click', function () { card.parentNode.removeChild(card); });
+    head.appendChild(rm);
+    card.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'kpi-grid';
+
+    // Category + Actual
+    var catInput = document.createElement('input');
+    catInput.type = 'text'; catInput.id = 'kpi-' + i + '-category'; catInput.value = def.category || 'General';
+    grid.appendChild(labeledField('Category', catInput));
+    grid.appendChild(labeledField('Actual measure', measureSelect('kpi-' + i + '-actual', fields, def.actual, false)));
+
+    // Aggregation + Comparison mode
+    var aggSel = document.createElement('select'); aggSel.id = 'kpi-' + i + '-agg';
+    aggSel.appendChild(opt('sum', 'Sum (additive — forecast run-rate)'));
+    aggSel.appendChild(opt('avg', 'Average (point-in-time — forecast flat)'));
+    aggSel.value = def.agg || 'sum';
+    grid.appendChild(labeledField('Aggregation', aggSel));
+
+    var compSel = document.createElement('select'); compSel.id = 'kpi-' + i + '-compMode';
+    compSel.appendChild(opt('prior', 'Prior month'));
+    compSel.appendChild(opt('avg3', 'Last 3-month average'));
+    compSel.appendChild(opt('budget', 'Budget'));
+    compSel.appendChild(opt('month', 'Specific prior month'));
+    compSel.value = def.compMode || 'prior';
+    grid.appendChild(labeledField('Compare to', compSel));
+
+    // Month offset (only relevant for 'month')
+    var offInput = document.createElement('input');
+    offInput.type = 'number'; offInput.min = '1'; offInput.max = '36'; offInput.step = '1';
+    offInput.id = 'kpi-' + i + '-compMonthOffset'; offInput.value = String(intOf(def.compMonthOffset, 12));
+    var offField = labeledField('Months back (for Specific)', offInput);
+    grid.appendChild(offField);
+
+    // Budget + PY measures
+    grid.appendChild(labeledField('Budget measure', measureSelect('kpi-' + i + '-budget', fields, def.budget, true)));
+    grid.appendChild(labeledField('Prior-year measure', measureSelect('kpi-' + i + '-py', fields, def.py, true)));
+
+    // Trend compare
+    var trendSel = document.createElement('select'); trendSel.id = 'kpi-' + i + '-trendCompare';
+    trendSel.appendChild(opt('budget', 'Overlay budget'));
+    trendSel.appendChild(opt('py', 'Overlay prior year'));
+    trendSel.appendChild(opt('none', 'Actual only'));
+    trendSel.value = def.trendCompare || 'budget';
+    grid.appendChild(labeledField('Trend overlay', trendSel));
+
+    // Cardinality + Forecast (checkboxes)
+    var flags = document.createElement('div'); flags.className = 'field';
+    var hibLbl = document.createElement('label'); hibLbl.className = 'check';
+    var hibCb = document.createElement('input'); hibCb.type = 'checkbox'; hibCb.id = 'kpi-' + i + '-hib'; hibCb.checked = boolOf(def.hib);
+    hibLbl.appendChild(hibCb); hibLbl.appendChild(document.createTextNode('Up is good'));
+    var fcLbl = document.createElement('label'); fcLbl.className = 'check'; fcLbl.style.marginLeft = '14px';
+    var fcCb = document.createElement('input'); fcCb.type = 'checkbox'; fcCb.id = 'kpi-' + i + '-forecast'; fcCb.checked = boolOf(def.forecast);
+    fcLbl.appendChild(fcCb); fcLbl.appendChild(document.createTextNode('Month-end forecast'));
+    flags.appendChild(hibLbl); flags.appendChild(fcLbl);
+    grid.appendChild(flags);
+
+    // Format sub-grid (full width)
+    var fmtWrap = document.createElement('div'); fmtWrap.className = 'field full';
+    var fmtLbl = document.createElement('label'); fmtLbl.textContent = 'Value format (prefix / suffix / scale / decimals)';
+    fmtWrap.appendChild(fmtLbl);
+    var fmtGrid = document.createElement('div'); fmtGrid.className = 'kpi-fmt-grid';
+    var pre = document.createElement('input'); pre.type = 'text'; pre.id = 'kpi-' + i + '-fmtPrefix'; pre.placeholder = '$'; pre.value = def.fmtPrefix || '';
+    var suf = document.createElement('input'); suf.type = 'text'; suf.id = 'kpi-' + i + '-fmtSuffix'; suf.placeholder = '%'; suf.value = def.fmtSuffix || '';
+    var scl = document.createElement('select'); scl.id = 'kpi-' + i + '-fmtScale';
+    scl.appendChild(opt('none', 'None')); scl.appendChild(opt('K', 'K')); scl.appendChild(opt('M', 'M'));
+    scl.value = def.fmtScale || 'none';
+    var dec = document.createElement('select'); dec.id = 'kpi-' + i + '-fmtDecimals';
+    ['0', '1', '2', '3'].forEach(function (d) { dec.appendChild(opt(d, d)); });
+    dec.value = String(intOf(def.fmtDecimals, 0));
+    fmtGrid.appendChild(pre); fmtGrid.appendChild(suf); fmtGrid.appendChild(scl); fmtGrid.appendChild(dec);
+    fmtWrap.appendChild(fmtGrid);
+    grid.appendChild(fmtWrap);
+
+    card.appendChild(grid);
+    document.getElementById('kpi-editor').appendChild(card);
+
+    // Show the month-offset field only for the "Specific prior month" mode.
+    var syncOff = function () { offField.style.display = compSel.value === 'month' ? 'block' : 'none'; };
+    compSel.addEventListener('change', syncOff);
+    syncOff();
+  };
+
+  DialogApp.prototype.save = function () {
+    var defs = [];
+    var cards = document.querySelectorAll('#kpi-editor .kpi-card');
+    Array.prototype.forEach.call(cards, function (card) {
+      var i = card.getAttribute('data-idx');
+      var g = function (suffix) { return document.getElementById('kpi-' + i + '-' + suffix); };
+      var actual = g('actual') ? g('actual').value : '';
+      if (!actual) { return; } // skip incomplete cards
+      defs.push({
+        id: 'kpi' + i,
+        label: g('label').value,
+        category: g('category').value || 'General',
+        actual: actual,
+        agg: g('agg').value,
+        compMode: g('compMode').value,
+        compMonthOffset: intOf(g('compMonthOffset').value, 12),
+        budget: g('budget').value,
+        py: g('py').value,
+        hib: g('hib').checked,
+        forecast: g('forecast').checked,
+        trendCompare: g('trendCompare').value,
+        fmtPrefix: g('fmtPrefix').value,
+        fmtSuffix: g('fmtSuffix').value,
+        fmtScale: g('fmtScale').value,
+        fmtDecimals: intOf(g('fmtDecimals').value, 0)
+      });
+    });
+
+    var values = {
+      title: document.getElementById('f-title').value,
+      flatThresholdPct: document.getElementById('f-flat').value,
+      forecastElapsedOverride: document.getElementById('f-elapsed').value,
+      trendShow: String(document.getElementById('f-trend-show').checked),
+      trendZero: String(document.getElementById('f-trend-zero').checked),
+      trendAxis: document.getElementById('f-trend-axis').value,
+      trendWindow: document.getElementById('f-trend-window').value,
+      transparentBg: String(document.getElementById('f-transparent').checked),
+      pageBg: document.getElementById('f-page-bg').value,
+      valueColor: document.getElementById('f-value-color').value,
+      chartColor: document.getElementById('f-chart-color').value,
+      favText: document.getElementById('f-fav-text').value,
+      unfavText: document.getElementById('f-unfav-text').value,
+      thousandsSep: document.getElementById('f-thousands').value,
+      kpiDefs: JSON.stringify(defs)
+    };
+    Object.keys(values).forEach(function (key) { tableau.extensions.settings.set(key, values[key]); });
+    tableau.extensions.settings.saveAsync().then(function () {
+      tableau.extensions.ui.closeDialog('saved');
+    }, function (err) {
+      showFatalError('Failed to save settings: ' + (err && err.message ? err.message : err));
+    });
+  };
+
+  // =========================================================================
+  // Boot
+  // =========================================================================
+  if (isDialog) { new DialogApp().init(); } else { new CardApp().init(); }
+})();
+</script>
+</body>
+</html>

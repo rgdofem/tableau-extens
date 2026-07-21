@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.rgdofem.extensions.morkpicard" extension-version="1.0.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>A configurable KPI card for the MOR report: pick a category then a KPI, and see the current month value, a comparison (prior month, last-3-month average, budget, or a specific prior month), a rising/falling/flat indicator, and an actual-vs-budget/prior-year trend with an optional month-end run-rate forecast.</description>
+    <author name="rgdofem" email="ryan.goodman@pinnacletreatment.com" organization="rgdofem" website="https://github.com/rgdofem/tableau-extens"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://rgdofem.github.io/tableau-extens/mor-kpi/index.html</url>
+    </source-location>
+    <icon>iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABsSURBVFhH7dShDcAgFEVRxkFV1KA7QgdivW7SIDpE6y95JDUfxLvJM6iT/IT0Ti7xIbp1AHd7QmeAAesBZmVAByjH+Wtsq/twzIAOEJ0BEsBbq7Er5+GYARIQlQESwFurMf58HDNAAqIywIAPwDNbu4wyxI8AAAAASUVORK5CYII=</icon>
+    <encoding id="date">
+      <display-name resource-id="enc-date">Date</display-name>
+      <data-spec>
+        <data-type>temporal</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+        <role-type>continuous-dimension</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <encoding-icon token="forecast"/>
+      <tooltip resource-id="tt-date">The month date. Required — drives the current/prior/3-month-average windows, the prior-year comparison, and the trend chart. Use exact month grain.</tooltip>
+    </encoding>
+    <encoding id="measures">
+      <display-name resource-id="enc-measures">Measures</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="16"/>
+      <encoding-icon token="metric"/>
+      <tooltip resource-id="tt-measures">Every KPI measure (Admits, Terms, Headcount, …) plus any budget and prior-year measures. Which measures are KPIs, how they group into categories, and how each compares are all configured in the settings dialog.</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">MOR KPI Card</text>
+    </resource>
+    <resource id="enc-date">
+      <text locale="en_US">Date</text>
+    </resource>
+    <resource id="enc-measures">
+      <text locale="en_US">Measures</text>
+    </resource>
+    <resource id="tt-date">
+      <text locale="en_US">The month date. Required — drives the current/prior/3-month-average windows, the prior-year comparison, and the trend chart. Use exact month grain.</text>
+    </resource>
+    <resource id="tt-measures">
+      <text locale="en_US">Every KPI measure (Admits, Terms, Headcount, …) plus any budget and prior-year measures. Which measures are KPIs, how they group into categories, and how each compares are all configured in the settings dialog.</text>
+    </resource>
+  </resources>
+</manifest>
