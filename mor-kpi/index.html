@@ -535,7 +535,13 @@
   // Per-KPI defaults (applied when a saved def omits a key).
   var KPI_DEFAULTS = {
     id: '', label: '', category: 'General',
+    kind: 'measure',                 // 'measure' | 'ratio'
     actual: '', agg: 'sum',
+    // Ratio: numerator / (denominator [x denominator2]) x multiplier
+    numMeasure: '', numReduce: 'max',
+    denMeasure: '', denReduce: 'sum',
+    den2Measure: '', den2Reduce: 'max',
+    ratioMult: 1,
     compMode: 'prior', compMonthOffset: 12,
     budget: '', py: '', budgetLevel: true,
     lag: '0',
@@ -711,6 +717,7 @@
     out.budgetLevel = boolOf(out.budgetLevel);
     out.compMonthOffset = intOf(out.compMonthOffset, 12);
     out.fmtDecimals = intOf(out.fmtDecimals, 0);
+    out.ratioMult = floatOf(out.ratioMult, 1);
     return out;
   }
 
@@ -743,9 +750,16 @@
   function resolveKpiDefs(cfg, measureFields) {
     var saved = parseJsonArray(cfg.kpiDefsRaw);
     var defs = saved.length > 0 ? saved.map(mergeKpi) : autoSeedKpis(measureFields);
-    // Keep only KPIs whose actual measure is still on the worksheet, and give
-    // every def a stable id.
-    defs = defs.filter(function (d) { return d.actual && measureFields.indexOf(d.actual) !== -1; });
+    // Keep KPIs whose measures are still on the worksheet (a ratio needs its
+    // numerator + denominator; a measure needs its actual), and give every def
+    // a stable id.
+    defs = defs.filter(function (d) {
+      if (d.kind === 'ratio') {
+        return d.numMeasure && d.denMeasure &&
+          measureFields.indexOf(d.numMeasure) !== -1 && measureFields.indexOf(d.denMeasure) !== -1;
+      }
+      return d.actual && measureFields.indexOf(d.actual) !== -1;
+    });
     defs.forEach(function (d, i) { if (!d.id) { d.id = 'kpi' + i; } });
     return defs;
   }
@@ -924,14 +938,40 @@
   function actualMode(def) { return def.agg || 'sum'; }
   function budgetMode(def) { return def.budgetLevel ? 'max' : 'sum'; }
 
+  // The KPI's value for a given month. A 'ratio' KPI divides a numerator
+  // measure (own reduction) by a denominator (one or two measures multiplied,
+  // own reductions) times a scalar; a 'measure' KPI is just the reduced actual.
+  function kpiValueAt(def, monthly, mk) {
+    if (def.kind === 'ratio') {
+      var n = valAt(monthly, mk, def.numMeasure, def.numReduce);
+      var d = valAt(monthly, mk, def.denMeasure, def.denReduce);
+      if (n === null || d === null) { return null; }
+      if (def.den2Measure) {
+        var d2 = valAt(monthly, mk, def.den2Measure, def.den2Reduce);
+        if (d2 === null) { return null; }
+        d = d * d2;
+      }
+      if (d === 0) { return null; }
+      var mult = isFinite(def.ratioMult) ? def.ratioMult : 1;
+      return (n / d) * mult;
+    }
+    return valAt(monthly, mk, def.actual, actualMode(def));
+  }
+
+  function kpiLabel(def) {
+    if (def.label) { return def.label; }
+    if (def.kind === 'ratio') { return (def.numMeasure || '?') + ' / ' + (def.denMeasure || '?'); }
+    return def.actual || 'KPI';
+  }
+
   // A KPI's effective "current" month. Some measures (e.g. revenue) land a
   // period behind the report month, so lag shifts this KPI's window back:
-  // 'auto' = latest month (<= report anchor) this KPI actually has data for;
+  // 'auto' = latest month (<= report anchor) this KPI actually has a value for;
   // otherwise a fixed number of months back.
-  function effectiveAnchor(def, monthly, keys, anchorMk, aMode) {
+  function effectiveAnchor(def, monthly, keys, anchorMk) {
     if (def.lag === 'auto') {
       for (var i = keys.length - 1; i >= 0; i--) {
-        if (keys[i] <= anchorMk && valAt(monthly, keys[i], def.actual, aMode) !== null) { return keys[i]; }
+        if (keys[i] <= anchorMk && kpiValueAt(def, monthly, keys[i]) !== null) { return keys[i]; }
       }
       return anchorMk;
     }
@@ -1129,7 +1169,7 @@
     inCat.forEach(function (d) {
       var pill = document.createElement('button');
       pill.className = 'pill' + (d.id === active.id ? ' active' : '');
-      pill.textContent = d.label || d.actual;
+      pill.textContent = kpiLabel(d);
       pill.addEventListener('click', function () {
         if (self.selKpiId === d.id) { return; }
         self.selKpiId = d.id;
@@ -1144,19 +1184,20 @@
     var labelEl = document.getElementById('kpi-label');
     var valueEl = document.getElementById('kpi-value');
     var compareEl = document.getElementById('kpi-compare');
-    labelEl.textContent = def.label || def.actual;
+    labelEl.textContent = kpiLabel(def);
 
-    var aMode = actualMode(def), bMode = budgetMode(def);
+    var bMode = budgetMode(def);
     // Shift this KPI's window back when its data lags the report month.
-    var kAnchor = effectiveAnchor(def, monthly, keys, anchorMk, aMode);
+    var kAnchor = effectiveAnchor(def, monthly, keys, anchorMk);
     var lagged = kAnchor !== anchorMk;
-    var current = valAt(monthly, kAnchor, def.actual, aMode);
+    var current = kpiValueAt(def, monthly, kAnchor);
     valueEl.textContent = formatValue(current, fmt, cfg.thousandsSep);
     valueEl.style.color = cfg.valueColor;
 
-    // Forecast (month-end projection of the current partial month). Only for
-    // an un-lagged KPI — a lagged month is already complete.
-    var forecast = (def.forecast && !lagged) ? forecastFor(current, kAnchor, def, cfg) : null;
+    // Forecast (month-end projection of the current partial month). Only for an
+    // un-lagged single-measure KPI — a lagged month is already complete, and a
+    // ratio's run-rate cancels between numerator and denominator.
+    var forecast = (def.forecast && !lagged && def.kind !== 'ratio') ? forecastFor(current, kAnchor, def, cfg) : null;
 
     // Comparison baseline.
     var comp = null, compLabel = '';
@@ -1165,15 +1206,15 @@
       compLabel = 'budget';
     } else if (def.compMode === 'avg3') {
       var vals = [];
-      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, kAnchor - i, def.actual, aMode); if (v !== null) { vals.push(v); } }
+      for (var i = 1; i <= 3; i++) { var v = kpiValueAt(def, monthly, kAnchor - i); if (v !== null) { vals.push(v); } }
       if (vals.length > 0) { comp = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length; }
       compLabel = '3-mo avg';
     } else if (def.compMode === 'month') {
       var off = intOf(def.compMonthOffset, 12);
-      comp = valAt(monthly, kAnchor - off, def.actual, aMode);
+      comp = kpiValueAt(def, monthly, kAnchor - off);
       compLabel = fmtMonthShortYear(kAnchor - off);
     } else { // prior
-      comp = valAt(monthly, kAnchor - 1, def.actual, aMode);
+      comp = kpiValueAt(def, monthly, kAnchor - 1);
       compLabel = 'prior mo (' + fmtMonthShortYear(kAnchor - 1) + ')';
     }
 
@@ -1254,12 +1295,12 @@
   };
 
   CardApp.prototype.drawTrend = function (body, cfg, monthly, keys, anchorMk, def, forecast) {
-    var aMode = actualMode(def), bMode = budgetMode(def);
+    var bMode = budgetMode(def);
     var winStart = trendWindowStart(cfg.trendWindow, anchorMk);
     var actualPts = [];
     keys.forEach(function (mk) {
       if (mk < winStart || mk > anchorMk) { return; }
-      var v = valAt(monthly, mk, def.actual, aMode);
+      var v = kpiValueAt(def, monthly, mk);
       if (v !== null) { actualPts.push([msOfMk(mk), v]); }
     });
 
@@ -1278,8 +1319,10 @@
       var pyPts = [];
       keys.forEach(function (mk) {
         if (mk < winStart || mk > anchorMk) { return; }
-        // Prior-year: use a PY measure if mapped, else the actual 12 months back.
-        var v = def.py ? valAt(monthly, mk, def.py, aMode) : valAt(monthly, mk - 12, def.actual, aMode);
+        // Prior-year: a ratio uses its own value 12 months back; a measure uses
+        // a mapped PY measure if present, else the actual shifted 12 months.
+        var v = (def.kind === 'ratio') ? kpiValueAt(def, monthly, mk - 12)
+          : (def.py ? valAt(monthly, mk, def.py, actualMode(def)) : valAt(monthly, mk - 12, def.actual, actualMode(def)));
         if (v !== null) { pyPts.push([msOfMk(mk), v]); }
       });
       if (pyPts.length > 1) { series.push({ label: 'Prior year', color: lighten(cfg.valueColor, 0.45), points: pyPts }); }
@@ -1574,20 +1617,62 @@
     var grid = document.createElement('div');
     grid.className = 'kpi-grid';
 
-    // Category + Actual
+    var reduceSel = function (id, val) {
+      var s = document.createElement('select'); s.id = id;
+      [['sum', 'Sum'], ['avg', 'Average'], ['max', 'Max / one value'], ['latest', 'Latest day']]
+        .forEach(function (o) { s.appendChild(opt(o[0], o[1])); });
+      s.value = val || 'sum'; return s;
+    };
+
+    // Category + KPI type
     var catInput = document.createElement('input');
     catInput.type = 'text'; catInput.id = 'kpi-' + i + '-category'; catInput.value = def.category || 'General';
     grid.appendChild(labeledField('Category', catInput));
-    grid.appendChild(labeledField('Actual measure', measureSelect('kpi-' + i + '-actual', fields, def.actual, false)));
 
-    // Aggregation + Comparison mode
+    var kindSel = document.createElement('select'); kindSel.id = 'kpi-' + i + '-kind';
+    kindSel.appendChild(opt('measure', 'Single measure'));
+    kindSel.appendChild(opt('ratio', 'Ratio (numerator ÷ denominator)'));
+    kindSel.value = def.kind === 'ratio' ? 'ratio' : 'measure';
+    grid.appendChild(labeledField('KPI type', kindSel));
+
+    // Single-measure fields (hidden for ratio)
+    var actualField = labeledField('Actual measure', measureSelect('kpi-' + i + '-actual', fields, def.actual, false));
+    grid.appendChild(actualField);
     var aggSel = document.createElement('select'); aggSel.id = 'kpi-' + i + '-agg';
     aggSel.appendChild(opt('sum', 'Sum (additive — forecast run-rate)'));
     aggSel.appendChild(opt('avg', 'Average of days (point-in-time — forecast flat)'));
     aggSel.appendChild(opt('max', 'Max / one value per month'));
     aggSel.appendChild(opt('latest', 'Latest day in month'));
     aggSel.value = def.agg || 'sum';
-    grid.appendChild(labeledField('Aggregation (within a month)', aggSel));
+    var aggField = labeledField('Aggregation (within a month)', aggSel);
+    grid.appendChild(aggField);
+
+    // Ratio fields (hidden for single measure). numerator / (denom [x denom2]) x mult.
+    var ratioPanel = document.createElement('div'); ratioPanel.className = 'field full';
+    var rLbl = document.createElement('label'); rLbl.textContent = 'Ratio: numerator ÷ denominator (each with its own monthly reduction)';
+    ratioPanel.appendChild(rLbl);
+    var rGrid = document.createElement('div'); rGrid.className = 'kpi-grid';
+    rGrid.appendChild(labeledField('Numerator', measureSelect('kpi-' + i + '-numMeasure', fields, def.numMeasure, false)));
+    rGrid.appendChild(labeledField('Numerator reduce', reduceSel('kpi-' + i + '-numReduce', def.numReduce || 'max')));
+    rGrid.appendChild(labeledField('Denominator', measureSelect('kpi-' + i + '-denMeasure', fields, def.denMeasure, false)));
+    rGrid.appendChild(labeledField('Denominator reduce', reduceSel('kpi-' + i + '-denReduce', def.denReduce || 'sum')));
+    rGrid.appendChild(labeledField('× 2nd denominator (optional)', measureSelect('kpi-' + i + '-den2Measure', fields, def.den2Measure, true)));
+    rGrid.appendChild(labeledField('2nd denom reduce', reduceSel('kpi-' + i + '-den2Reduce', def.den2Reduce || 'max')));
+    var multInput = document.createElement('input');
+    multInput.type = 'number'; multInput.step = 'any'; multInput.id = 'kpi-' + i + '-ratioMult';
+    multInput.value = String(isFinite(def.ratioMult) ? def.ratioMult : 1);
+    rGrid.appendChild(labeledField('× Multiplier (e.g. 100 for %)', multInput));
+    ratioPanel.appendChild(rGrid);
+    grid.appendChild(ratioPanel);
+
+    var syncKind = function () {
+      var isRatio = kindSel.value === 'ratio';
+      actualField.style.display = isRatio ? 'none' : 'block';
+      aggField.style.display = isRatio ? 'none' : 'block';
+      ratioPanel.style.display = isRatio ? 'block' : 'none';
+    };
+    kindSel.addEventListener('change', syncKind);
+    syncKind();
 
     var compSel = document.createElement('select'); compSel.id = 'kpi-' + i + '-compMode';
     compSel.appendChild(opt('prior', 'Prior month'));
@@ -1671,13 +1756,25 @@
       var i = card.getAttribute('data-idx');
       var g = function (suffix) { return document.getElementById('kpi-' + i + '-' + suffix); };
       var actual = g('actual') ? g('actual').value : '';
-      if (!actual) { return; } // skip incomplete cards
+      var kind = g('kind') ? g('kind').value : 'measure';
+      // Skip incomplete cards: a measure needs an actual; a ratio needs num + denom.
+      if (kind === 'ratio') {
+        if (!(g('numMeasure') && g('numMeasure').value && g('denMeasure') && g('denMeasure').value)) { return; }
+      } else if (!actual) { return; }
       defs.push({
         id: 'kpi' + i,
         label: g('label').value,
         category: g('category').value || 'General',
+        kind: kind,
         actual: actual,
         agg: g('agg').value,
+        numMeasure: g('numMeasure') ? g('numMeasure').value : '',
+        numReduce: g('numReduce') ? g('numReduce').value : 'max',
+        denMeasure: g('denMeasure') ? g('denMeasure').value : '',
+        denReduce: g('denReduce') ? g('denReduce').value : 'sum',
+        den2Measure: g('den2Measure') ? g('den2Measure').value : '',
+        den2Reduce: g('den2Reduce') ? g('den2Reduce').value : 'max',
+        ratioMult: floatOf(g('ratioMult') ? g('ratioMult').value : 1, 1),
         compMode: g('compMode').value,
         compMonthOffset: intOf(g('compMonthOffset').value, 12),
         lag: g('lag').value,

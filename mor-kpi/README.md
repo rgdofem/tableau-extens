@@ -33,17 +33,29 @@ month that's the value itself).
 Each KPI card in the dialog sets:
 
 - **Label / Category** — the category groups KPIs into the top selector.
-- **Actual measure** — the metric this KPI reports.
-- **Aggregation** — *Sum* (additive metrics like Admits/Terms; forecast uses a run-rate) or
-  *Average* (point-in-time metrics like Headcount/ADC; forecast projects flat).
+- **KPI type** — *Single measure* or *Ratio*.
+  - *Single measure*: pick an **Actual measure** and an **Aggregation** (how it reduces within
+    a month): **Sum** (additive totals like Admits — forecast uses a run-rate), **Average of
+    days** (point-in-time like ADC — forecast flat), **Max / one value per month** (a monthly
+    level repeated across days), or **Latest day**.
+  - *Ratio*: **numerator ÷ denominator**, each measure with its **own** monthly reduction, plus
+    an optional **× 2nd denominator** factor and a **× multiplier** (e.g. 100 for a percentage).
+    This is how you build RPPD (Revenue `Max` ÷ Census `Sum`), occupancy, cost-per-day, etc. —
+    it solves the "different parts need different reductions" problem a single measure can't.
 - **Compare to** — Prior month, Last 3-month average, Budget, or a Specific prior month
-  (with a months-back offset).
+  (with a months-back offset). Ratios compare against the ratio at that period.
+- **Period lag** — for measures that trail the report month (e.g. revenue only through last
+  month): *Report month* (default), *1–6 months back*, or *Auto* (the latest month this KPI
+  actually has data for). A lagged KPI shows an "As of <Mon Year>" note and skips the forecast.
 - **Budget / Prior-year measures** — optional; used for the budget comparison and the trend overlay.
+- **Budget is a monthly level (don't sum)** — on by default. A budget stored once per month but
+  repeated across daily rows is taken as one value per month instead of summed (fixes a budget
+  showing N× too big). Turn off only if the budget is a genuine daily target.
 - **Trend overlay** — budget area, prior-year line, or actual only.
 - **Up is good** — cardinality for favorable/unfavorable coloring.
-- **Month-end forecast** — project the current partial month to month end. When on, the
-  variance is measured off the **forecast**, not the raw partial-month actual (a partial month
-  always looks low against a full prior month — this makes the comparison fair).
+- **Month-end forecast** — project the current partial month to month end (single-measure Sum
+  KPIs only). When on, the variance is measured off the **forecast**, not the raw partial-month
+  actual (a partial month always looks low against a full prior month — this makes it fair).
 - **Value format** — prefix / suffix / scale (K/M) / decimals, per KPI (a count and a rate
   format very differently).
 
