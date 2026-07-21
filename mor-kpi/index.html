@@ -537,7 +537,7 @@
     id: '', label: '', category: 'General',
     actual: '', agg: 'sum',
     compMode: 'prior', compMonthOffset: 12,
-    budget: '', py: '',
+    budget: '', py: '', budgetLevel: true,
     hib: true, forecast: false,
     trendCompare: 'budget',
     fmtPrefix: '', fmtSuffix: '', fmtScale: 'none', fmtDecimals: 0
@@ -707,6 +707,7 @@
     });
     out.hib = boolOf(out.hib);
     out.forecast = boolOf(out.forecast);
+    out.budgetLevel = boolOf(out.budgetLevel);
     out.compMonthOffset = intOf(out.compMonthOffset, 12);
     out.fmtDecimals = intOf(out.fmtDecimals, 0);
     return out;
@@ -887,21 +888,40 @@
       measureFields.forEach(function (f) {
         var v = numOf(row[f]);
         if (!isNaN(v)) {
-          var cell = bucket[f] || (bucket[f] = { sum: 0, any: false });
-          cell.sum += v; cell.any = true;
+          var cell = bucket[f] || (bucket[f] = { sum: 0, count: 0, max: -Infinity, min: Infinity, last: null, lastMs: -Infinity, any: false });
+          cell.sum += v; cell.count++; cell.any = true;
+          if (v > cell.max) { cell.max = v; }
+          if (v < cell.min) { cell.min = v; }
+          if (ms >= cell.lastMs) { cell.lastMs = ms; cell.last = v; }
         }
       });
     });
     return monthly;
   };
 
-  function valAt(monthly, mk, field) {
+  // Reduce a month's cell for a measure. 'sum' (additive), 'avg' (daily
+  // point-in-time), 'max'/'min' (a monthly level repeated across days — one
+  // value), or 'latest' (last day in the month).
+  function valReduce(cell, mode) {
+    if (!cell || !cell.any) { return null; }
+    if (mode === 'avg') { return cell.sum / cell.count; }
+    if (mode === 'max') { return cell.max; }
+    if (mode === 'min') { return cell.min; }
+    if (mode === 'latest') { return cell.last; }
+    return cell.sum;
+  }
+
+  function valAt(monthly, mk, field, mode) {
     if (!field) { return null; }
     var b = monthly[mk];
     if (!b) { return null; }
-    var c = b[field];
-    return (c && c.any) ? c.sum : null;
+    return valReduce(b[field], mode || 'sum');
   }
+
+  // How a KPI's own measure (and any PY measure, which is "actual last year")
+  // reduces within a month; and how its budget reduces (a level => one value).
+  function actualMode(def) { return def.agg || 'sum'; }
+  function budgetMode(def) { return def.budgetLevel ? 'max' : 'sum'; }
 
   // Compute the forecast month-end value for the anchor (current) month.
   // sum KPIs use the run-rate (MTD / fraction-of-month elapsed); avg/latest
@@ -1111,7 +1131,8 @@
     var compareEl = document.getElementById('kpi-compare');
     labelEl.textContent = def.label || def.actual;
 
-    var current = valAt(monthly, anchorMk, def.actual);
+    var aMode = actualMode(def), bMode = budgetMode(def);
+    var current = valAt(monthly, anchorMk, def.actual, aMode);
     valueEl.textContent = formatValue(current, fmt, cfg.thousandsSep);
     valueEl.style.color = cfg.valueColor;
 
@@ -1121,19 +1142,19 @@
     // Comparison baseline.
     var comp = null, compLabel = '';
     if (def.compMode === 'budget') {
-      comp = valAt(monthly, anchorMk, def.budget);
+      comp = valAt(monthly, anchorMk, def.budget, bMode);
       compLabel = 'budget';
     } else if (def.compMode === 'avg3') {
       var vals = [];
-      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, anchorMk - i, def.actual); if (v !== null) { vals.push(v); } }
+      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, anchorMk - i, def.actual, aMode); if (v !== null) { vals.push(v); } }
       if (vals.length > 0) { comp = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length; }
       compLabel = '3-mo avg';
     } else if (def.compMode === 'month') {
       var off = intOf(def.compMonthOffset, 12);
-      comp = valAt(monthly, anchorMk - off, def.actual);
+      comp = valAt(monthly, anchorMk - off, def.actual, aMode);
       compLabel = fmtMonthShortYear(anchorMk - off);
     } else { // prior
-      comp = valAt(monthly, anchorMk - 1, def.actual);
+      comp = valAt(monthly, anchorMk - 1, def.actual, aMode);
       compLabel = 'prior mo (' + fmtMonthShortYear(anchorMk - 1) + ')';
     }
 
@@ -1206,11 +1227,12 @@
   };
 
   CardApp.prototype.drawTrend = function (body, cfg, monthly, keys, anchorMk, def, forecast) {
+    var aMode = actualMode(def), bMode = budgetMode(def);
     var winStart = trendWindowStart(cfg.trendWindow, anchorMk);
     var actualPts = [];
     keys.forEach(function (mk) {
       if (mk < winStart || mk > anchorMk) { return; }
-      var v = valAt(monthly, mk, def.actual);
+      var v = valAt(monthly, mk, def.actual, aMode);
       if (v !== null) { actualPts.push([msOfMk(mk), v]); }
     });
 
@@ -1221,7 +1243,7 @@
       var budgetPts = [];
       keys.forEach(function (mk) {
         if (mk < winStart || mk > anchorMk) { return; }
-        var v = valAt(monthly, mk, def.budget);
+        var v = valAt(monthly, mk, def.budget, bMode);
         if (v !== null) { budgetPts.push([msOfMk(mk), v]); }
       });
       if (budgetPts.length > 1) { area = { label: 'Budget', points: budgetPts, fill: lighten(cfg.chartColor, 0.62) }; }
@@ -1230,7 +1252,7 @@
       keys.forEach(function (mk) {
         if (mk < winStart || mk > anchorMk) { return; }
         // Prior-year: use a PY measure if mapped, else the actual 12 months back.
-        var v = def.py ? valAt(monthly, mk, def.py) : valAt(monthly, mk - 12, def.actual);
+        var v = def.py ? valAt(monthly, mk, def.py, aMode) : valAt(monthly, mk - 12, def.actual, aMode);
         if (v !== null) { pyPts.push([msOfMk(mk), v]); }
       });
       if (pyPts.length > 1) { series.push({ label: 'Prior year', color: lighten(cfg.valueColor, 0.45), points: pyPts }); }
@@ -1534,9 +1556,11 @@
     // Aggregation + Comparison mode
     var aggSel = document.createElement('select'); aggSel.id = 'kpi-' + i + '-agg';
     aggSel.appendChild(opt('sum', 'Sum (additive — forecast run-rate)'));
-    aggSel.appendChild(opt('avg', 'Average (point-in-time — forecast flat)'));
+    aggSel.appendChild(opt('avg', 'Average of days (point-in-time — forecast flat)'));
+    aggSel.appendChild(opt('max', 'Max / one value per month'));
+    aggSel.appendChild(opt('latest', 'Latest day in month'));
     aggSel.value = def.agg || 'sum';
-    grid.appendChild(labeledField('Aggregation', aggSel));
+    grid.appendChild(labeledField('Aggregation (within a month)', aggSel));
 
     var compSel = document.createElement('select'); compSel.id = 'kpi-' + i + '-compMode';
     compSel.appendChild(opt('prior', 'Prior month'));
@@ -1565,15 +1589,19 @@
     trendSel.value = def.trendCompare || 'budget';
     grid.appendChild(labeledField('Trend overlay', trendSel));
 
-    // Cardinality + Forecast (checkboxes)
-    var flags = document.createElement('div'); flags.className = 'field';
+    // Cardinality + Forecast + Budget-level (checkboxes, full width)
+    var flags = document.createElement('div'); flags.className = 'field full';
     var hibLbl = document.createElement('label'); hibLbl.className = 'check';
     var hibCb = document.createElement('input'); hibCb.type = 'checkbox'; hibCb.id = 'kpi-' + i + '-hib'; hibCb.checked = boolOf(def.hib);
     hibLbl.appendChild(hibCb); hibLbl.appendChild(document.createTextNode('Up is good'));
     var fcLbl = document.createElement('label'); fcLbl.className = 'check'; fcLbl.style.marginLeft = '14px';
     var fcCb = document.createElement('input'); fcCb.type = 'checkbox'; fcCb.id = 'kpi-' + i + '-forecast'; fcCb.checked = boolOf(def.forecast);
     fcLbl.appendChild(fcCb); fcLbl.appendChild(document.createTextNode('Month-end forecast'));
-    flags.appendChild(hibLbl); flags.appendChild(fcLbl);
+    var blLbl = document.createElement('label'); blLbl.className = 'check'; blLbl.style.marginLeft = '14px';
+    blLbl.title = 'Budget/PY is one figure per month repeated across days — take one value instead of summing (fixes budget showing N× too big).';
+    var blCb = document.createElement('input'); blCb.type = 'checkbox'; blCb.id = 'kpi-' + i + '-budgetLevel'; blCb.checked = boolOf(def.budgetLevel);
+    blLbl.appendChild(blCb); blLbl.appendChild(document.createTextNode('Budget is a monthly level (don’t sum)'));
+    flags.appendChild(hibLbl); flags.appendChild(fcLbl); flags.appendChild(blLbl);
     grid.appendChild(flags);
 
     // Format sub-grid (full width)
@@ -1620,6 +1648,7 @@
         compMonthOffset: intOf(g('compMonthOffset').value, 12),
         budget: g('budget').value,
         py: g('py').value,
+        budgetLevel: g('budgetLevel').checked,
         hib: g('hib').checked,
         forecast: g('forecast').checked,
         trendCompare: g('trendCompare').value,
