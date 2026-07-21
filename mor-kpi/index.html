@@ -207,6 +207,24 @@
   }
   #trend-body svg { display: block; }
 
+  /* Diagnostics overlay */
+  #diag {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 4px 0 0 0;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #1A1A1A;
+    background: #F7F8FA;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
   .trend-legend {
     position: absolute;
     top: 2px; right: 4px;
@@ -360,6 +378,7 @@
       <div id="kpi-row" class="pill-row kpi"></div>
     </div>
     <div id="empty-state" class="hidden"></div>
+    <pre id="diag" class="hidden"></pre>
     <div id="content" class="hidden">
       <div id="kpi-body">
         <div id="kpi-value-wrap">
@@ -397,6 +416,9 @@
       <input type="number" id="f-elapsed" min="1" max="31" step="1" placeholder="Auto — the data warehouse is a day behind, so it uses yesterday's date">
     </div>
     <div class="note">The month-end forecast projects the current partial month using its run-rate. Days elapsed is auto-derived from yesterday's date (the DWH lags a day); override only if the data lags further.</div>
+    <div class="field" style="margin-top:8px;">
+      <label class="check"><input type="checkbox" id="f-debug"> Show data diagnostics (temporary — dumps the raw rows the card receives)</label>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -506,7 +528,8 @@
     favText: '#2E7D32',
     unfavText: '#C62828',
     thousandsSep: 'true',
-    kpiDefs: '[]'
+    kpiDefs: '[]',
+    debug: 'false'
   };
 
   // Per-KPI defaults (applied when a saved def omits a key).
@@ -709,7 +732,8 @@
       favText: getSetting(settings, 'favText'),
       unfavText: getSetting(settings, 'unfavText'),
       thousandsSep: boolOf(getSetting(settings, 'thousandsSep')),
-      kpiDefsRaw: getSetting(settings, 'kpiDefs')
+      kpiDefsRaw: getSetting(settings, 'kpiDefs'),
+      debug: boolOf(getSetting(settings, 'debug'))
     };
   }
 
@@ -898,6 +922,77 @@
     return currentActual / frac;
   }
 
+  // Dump the raw summary data the card receives, so a budget fan-out can be
+  // diagnosed: row counts per month, and each measure's value distribution
+  // (min/max/distinct) plus any dimension columns and their cardinality.
+  CardApp.prototype.buildDiagnostics = function (dateField, measureFields) {
+    var self = this;
+    var L = [];
+    L.push('=== MOR KPI diagnostics ===');
+    L.push('Worksheet: ' + (this.worksheet && this.worksheet.name ? this.worksheet.name : '(unknown)'));
+    L.push('Date tile: ' + JSON.stringify(this.fieldNamesFor(ENC.DATE)));
+    L.push('Measures tile: ' + JSON.stringify(measureFields));
+    var cols = this.rows.length ? Object.keys(this.rows[0]) : [];
+    L.push('Summary columns delivered: ' + JSON.stringify(cols));
+    L.push('Total rows: ' + this.rows.length);
+
+    var monthCounts = {};
+    if (dateField) {
+      this.rows.forEach(function (r) {
+        var dv = r[dateField];
+        if (isNullValue(dv)) { return; }
+        var ms = parseDateMs(dv.value);
+        if (ms === null) { return; }
+        var mk = mkOf(ms);
+        monthCounts[mk] = (monthCounts[mk] || 0) + 1;
+      });
+    }
+    var mks = Object.keys(monthCounts).map(Number).sort(function (a, b) { return a - b; });
+    L.push('Months (rows each): ' + (mks.length
+      ? mks.map(function (mk) { return fmtMonthShortYear(mk) + '=' + monthCounts[mk]; }).join(', ')
+      : '(no parseable dates)'));
+    var anchor = mks.length ? mks[mks.length - 1] : null;
+    L.push('Anchor (latest) month: ' + (anchor !== null ? fmtMonthShortYear(anchor) : '(none)'));
+
+    var anchorRows = (dateField && anchor !== null)
+      ? this.rows.filter(function (r) { var dv = r[dateField]; return !isNullValue(dv) && mkOf(parseDateMs(dv.value)) === anchor; })
+      : this.rows;
+    L.push('Anchor rows: ' + anchorRows.length);
+    L.push('----- measures @ anchor month -----');
+    measureFields.forEach(function (f) {
+      var vals = [];
+      anchorRows.forEach(function (r) { var v = numOf(r[f]); if (!isNaN(v)) { vals.push(v); } });
+      if (!vals.length) { L.push(f + ': (no non-null values)'); return; }
+      var sum = vals.reduce(function (a, b) { return a + b; }, 0);
+      var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+      var tally = {};
+      vals.forEach(function (v) { tally[v] = (tally[v] || 0) + 1; });
+      var keys = Object.keys(tally);
+      var dist = keys.slice(0, 8).map(function (k) { return k + ' x' + tally[k]; }).join(', ');
+      if (keys.length > 8) { dist += ' ...(' + keys.length + ' distinct)'; }
+      L.push(f + ': n=' + vals.length + ' sum=' + sum.toFixed(1) + ' avg=' + (sum / vals.length).toFixed(1) + ' min=' + mn + ' max=' + mx);
+      L.push('   values: ' + dist);
+    });
+
+    var dimCols = cols.filter(function (c) { return c !== dateField && measureFields.indexOf(c) === -1; });
+    if (dimCols.length) {
+      L.push('----- dimension columns @ anchor -----');
+      dimCols.forEach(function (c) {
+        var set = {};
+        anchorRows.forEach(function (r) {
+          var dv = r[c];
+          var val = isNullValue(dv) ? '(null)' : String(dv.formattedValue !== undefined ? dv.formattedValue : dv.value);
+          set[val] = (set[val] || 0) + 1;
+        });
+        var keys = Object.keys(set);
+        L.push(c + ': ' + keys.length + ' distinct' + (keys.length <= 12 ? ' -> ' + keys.join(', ') : ''));
+      });
+    } else {
+      L.push('(no dimension columns in the summary data — only Date + measures)');
+    }
+    return L.join('\n');
+  };
+
   CardApp.prototype.render = function () {
     var cfg = readConfig(this.settings);
     var cardView = document.getElementById('card-view');
@@ -916,12 +1011,25 @@
     var measureFields = this.fieldNamesFor(ENC.MEASURES);
     var dateField = dateFields.length > 0 ? dateFields[0] : null;
 
+    var diagEl = document.getElementById('diag');
     var showEmpty = function (msg) {
       selectorsEl.classList.add('hidden');
       contentEl.classList.add('hidden');
+      diagEl.classList.add('hidden');
       emptyEl.textContent = msg;
       emptyEl.classList.remove('hidden');
     };
+
+    if (cfg.debug) {
+      titleEl.classList.add('hidden');
+      selectorsEl.classList.add('hidden');
+      contentEl.classList.add('hidden');
+      emptyEl.classList.add('hidden');
+      diagEl.classList.remove('hidden');
+      diagEl.textContent = this.buildDiagnostics(dateField, measureFields);
+      return;
+    }
+    diagEl.classList.add('hidden');
 
     if (!dateField || measureFields.length === 0) {
       showEmpty('Drop a month Date field on the Date tile and your KPI measures on the Measures tile.');
@@ -1351,6 +1459,7 @@
     document.getElementById('f-fav-text').value = getSetting(settings, 'favText');
     document.getElementById('f-unfav-text').value = getSetting(settings, 'unfavText');
     document.getElementById('f-thousands').value = String(boolOf(getSetting(settings, 'thousandsSep')));
+    document.getElementById('f-debug').checked = boolOf(getSetting(settings, 'debug'));
   };
 
   DialogApp.prototype.buildKpiEditor = function (settings) {
@@ -1536,7 +1645,8 @@
       favText: document.getElementById('f-fav-text').value,
       unfavText: document.getElementById('f-unfav-text').value,
       thousandsSep: document.getElementById('f-thousands').value,
-      kpiDefs: JSON.stringify(defs)
+      kpiDefs: JSON.stringify(defs),
+      debug: String(document.getElementById('f-debug').checked)
     };
     Object.keys(values).forEach(function (key) { tableau.extensions.settings.set(key, values[key]); });
     tableau.extensions.settings.saveAsync().then(function () {
