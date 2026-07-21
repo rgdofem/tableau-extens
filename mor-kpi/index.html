@@ -538,6 +538,7 @@
     actual: '', agg: 'sum',
     compMode: 'prior', compMonthOffset: 12,
     budget: '', py: '', budgetLevel: true,
+    lag: '0',
     hib: true, forecast: false,
     trendCompare: 'budget',
     fmtPrefix: '', fmtSuffix: '', fmtScale: 'none', fmtDecimals: 0
@@ -923,6 +924,20 @@
   function actualMode(def) { return def.agg || 'sum'; }
   function budgetMode(def) { return def.budgetLevel ? 'max' : 'sum'; }
 
+  // A KPI's effective "current" month. Some measures (e.g. revenue) land a
+  // period behind the report month, so lag shifts this KPI's window back:
+  // 'auto' = latest month (<= report anchor) this KPI actually has data for;
+  // otherwise a fixed number of months back.
+  function effectiveAnchor(def, monthly, keys, anchorMk, aMode) {
+    if (def.lag === 'auto') {
+      for (var i = keys.length - 1; i >= 0; i--) {
+        if (keys[i] <= anchorMk && valAt(monthly, keys[i], def.actual, aMode) !== null) { return keys[i]; }
+      }
+      return anchorMk;
+    }
+    return anchorMk - Math.max(0, intOf(def.lag, 0));
+  }
+
   // Compute the forecast month-end value for the anchor (current) month.
   // sum KPIs use the run-rate (MTD / fraction-of-month elapsed); avg/latest
   // KPIs project flat. Returns null when there is nothing to project.
@@ -1132,30 +1147,34 @@
     labelEl.textContent = def.label || def.actual;
 
     var aMode = actualMode(def), bMode = budgetMode(def);
-    var current = valAt(monthly, anchorMk, def.actual, aMode);
+    // Shift this KPI's window back when its data lags the report month.
+    var kAnchor = effectiveAnchor(def, monthly, keys, anchorMk, aMode);
+    var lagged = kAnchor !== anchorMk;
+    var current = valAt(monthly, kAnchor, def.actual, aMode);
     valueEl.textContent = formatValue(current, fmt, cfg.thousandsSep);
     valueEl.style.color = cfg.valueColor;
 
-    // Forecast (month-end projection of the current partial month).
-    var forecast = def.forecast ? forecastFor(current, anchorMk, def, cfg) : null;
+    // Forecast (month-end projection of the current partial month). Only for
+    // an un-lagged KPI — a lagged month is already complete.
+    var forecast = (def.forecast && !lagged) ? forecastFor(current, kAnchor, def, cfg) : null;
 
     // Comparison baseline.
     var comp = null, compLabel = '';
     if (def.compMode === 'budget') {
-      comp = valAt(monthly, anchorMk, def.budget, bMode);
+      comp = valAt(monthly, kAnchor, def.budget, bMode);
       compLabel = 'budget';
     } else if (def.compMode === 'avg3') {
       var vals = [];
-      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, anchorMk - i, def.actual, aMode); if (v !== null) { vals.push(v); } }
+      for (var i = 1; i <= 3; i++) { var v = valAt(monthly, kAnchor - i, def.actual, aMode); if (v !== null) { vals.push(v); } }
       if (vals.length > 0) { comp = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length; }
       compLabel = '3-mo avg';
     } else if (def.compMode === 'month') {
       var off = intOf(def.compMonthOffset, 12);
-      comp = valAt(monthly, anchorMk - off, def.actual, aMode);
-      compLabel = fmtMonthShortYear(anchorMk - off);
+      comp = valAt(monthly, kAnchor - off, def.actual, aMode);
+      compLabel = fmtMonthShortYear(kAnchor - off);
     } else { // prior
-      comp = valAt(monthly, anchorMk - 1, def.actual, aMode);
-      compLabel = 'prior mo (' + fmtMonthShortYear(anchorMk - 1) + ')';
+      comp = valAt(monthly, kAnchor - 1, def.actual, aMode);
+      compLabel = 'prior mo (' + fmtMonthShortYear(kAnchor - 1) + ')';
     }
 
     // When forecast is on, the variance is measured off the projected month-end
@@ -1211,6 +1230,14 @@
       compareEl.appendChild(fLine);
     }
 
+    // Make the reporting period explicit whenever it isn't the report month.
+    if (lagged) {
+      var asLine = document.createElement('div');
+      asLine.className = 'kpi-line muted';
+      asLine.textContent = 'As of ' + fmtMonthShortYear(kAnchor);
+      compareEl.appendChild(asLine);
+    }
+
     // Trend
     var trendWrap = document.getElementById('trend-wrap');
     var trendTitle = document.getElementById('trend-title');
@@ -1223,7 +1250,7 @@
     trendWrap.classList.remove('hidden');
     trendTitle.classList.add('hidden');
 
-    this.drawTrend(trendBody, cfg, monthly, keys, anchorMk, def, forecast);
+    this.drawTrend(trendBody, cfg, monthly, keys, kAnchor, def, forecast);
   };
 
   CardApp.prototype.drawTrend = function (body, cfg, monthly, keys, anchorMk, def, forecast) {
@@ -1577,6 +1604,13 @@
     var offField = labeledField('Months back (for Specific)', offInput);
     grid.appendChild(offField);
 
+    // Period lag — for measures that land behind the report month (e.g. revenue).
+    var lagSel = document.createElement('select'); lagSel.id = 'kpi-' + i + '-lag';
+    [['0', 'Report month'], ['1', '1 month back'], ['2', '2 months back'], ['3', '3 months back'],
+      ['6', '6 months back'], ['auto', 'Auto (latest with data)']].forEach(function (o) { lagSel.appendChild(opt(o[0], o[1])); });
+    lagSel.value = (def.lag !== undefined && def.lag !== null && def.lag !== '') ? String(def.lag) : '0';
+    grid.appendChild(labeledField('Period lag', lagSel));
+
     // Budget + PY measures
     grid.appendChild(labeledField('Budget measure', measureSelect('kpi-' + i + '-budget', fields, def.budget, true)));
     grid.appendChild(labeledField('Prior-year measure', measureSelect('kpi-' + i + '-py', fields, def.py, true)));
@@ -1646,6 +1680,7 @@
         agg: g('agg').value,
         compMode: g('compMode').value,
         compMonthOffset: intOf(g('compMonthOffset').value, 12),
+        lag: g('lag').value,
         budget: g('budget').value,
         py: g('py').value,
         budgetLevel: g('budgetLevel').checked,
